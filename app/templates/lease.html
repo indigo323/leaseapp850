@@ -1,0 +1,1358 @@
+{#
+  Lease template for 850 Cedar St, Berkeley CA 94710.
+
+  Signer IDs used by SignWell text tags:
+    1 = Primary Lessee
+    2 = Secondary Lessee (only referenced when num_lessees == 2)
+    3 = Landlord 1 (Brent Buck)
+    4 = Landlord 2 (Paige Buck)
+
+  Text tag syntax (SignWell): {{signature:N}}, {{date:N}}
+  We render tags in .tag class (white on white) so they're invisible in the
+  visual PDF but SignWell still parses them.
+#}
+{#
+  Signature macros — render a sig-cell or sig-row so all 8 blocks in the
+  document stay consistent. Changing the look of a signature line means
+  editing ONE place, not eight.
+#}
+{% macro sig_cell(signer_id, label, role_text='') %}
+  <div class="sig-cell">
+    <span class="sig-line"><span class="tag">{{ '{{signature:' }}{{ signer_id }}{{ '}}' }}</span></span>
+    <span class="label">{{ label }}</span>
+    <span class="role">
+      Date:
+      <span class="date-line"><span class="tag-date">{{ '{{date:' }}{{ signer_id }}{{ '}}' }}</span></span>
+      {% if role_text %}&nbsp;&nbsp;{{ role_text }}{% endif %}
+    </span>
+  </div>
+{% endmacro %}
+
+{% macro sig_cell_blank() %}
+  <div class="sig-cell" style="visibility:hidden"></div>
+{% endmacro %}
+
+{# Tenants-only block: primary + optional secondary #}
+{% macro tenant_sig_block() %}
+  <div class="sig-block">
+    <div class="sig-row">
+      {{ sig_cell(1, 'Tenant: ' ~ primary_lessee_name) }}
+      {% if num_lessees == 2 %}
+        {{ sig_cell(2, 'Tenant: ' ~ secondary_lessee_name) }}
+      {% else %}
+        {{ sig_cell_blank() }}
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+{# Landlords + tenants block: landlord 1 plus primary + optional secondary
+   (landlord 2 is named throughout the lease text but does not e-sign — kept
+   off SignWell to fit the free 3-recipient cap) #}
+{% macro full_sig_block() %}
+  <div class="sig-block">
+    <div class="sig-row">
+      {{ sig_cell(3, 'Owner/Agent: ' ~ landlord1_name) }}
+      {{ sig_cell_blank() }}
+    </div>
+    <div class="sig-row">
+      {{ sig_cell(1, 'Tenant: ' ~ primary_lessee_name) }}
+      {% if num_lessees == 2 %}
+        {{ sig_cell(2, 'Tenant: ' ~ secondary_lessee_name) }}
+      {% else %}
+        {{ sig_cell_blank() }}
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Residential Lease Agreement — {{ property_address }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.75in 0.75in 1in 0.75in;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "Times New Roman", serif;
+      font-size: 9pt;
+      color: #555;
+    }
+  }
+  body {
+    font-family: "Times New Roman", serif;
+    font-size: 11pt;
+    line-height: 1.4;
+    color: #000;
+  }
+  h1 {
+    font-size: 16pt;
+    text-align: center;
+    margin: 0 0 0.5em 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  h2 {
+    font-size: 13pt;
+    text-align: center;
+    margin: 1.5em 0 0.5em 0;
+    text-transform: uppercase;
+    page-break-before: always;
+  }
+  h2.first-addendum { page-break-before: always; }
+  p, li { margin: 0 0 0.6em 0; text-align: justify; }
+  a { color: #1a4480; text-decoration: underline; }
+  a:visited { color: #1a4480; }
+  /* Keep paragraphs that immediately precede a signature block together
+     with that block. WeasyPrint respects keep-with-next via CSS contexts. */
+  .sig-block + * { /* unused, but prevents odd stacking */ }
+  .before-sig { page-break-after: avoid; break-after: avoid; }
+  ol.clauses { padding-left: 1.5em; }
+  ol.clauses > li { margin-bottom: 0.9em; }
+  ol.clauses > li > b:first-child { text-transform: uppercase; }
+  ul.sub { padding-left: 1.5em; }
+  .sig-block {
+    margin-top: 1.8em;
+    page-break-inside: avoid;
+    /* Don't let a signature block start a new page on its own — it should
+       sit with the closing paragraph of the section above it. */
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+  .sig-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2em;
+    margin-bottom: 1.4em;
+  }
+  .sig-cell {
+    flex: 1;
+    font-size: 10pt;
+  }
+  .sig-line {
+    display: block;
+    border-bottom: 1px solid #000;
+    min-height: 2.2em;
+    padding: 0.2em 0.3em 0 0.3em;
+  }
+  .date-line {
+    display: inline-block;
+    border-bottom: 1px solid #000;
+    min-width: 8em;
+    padding: 0 0.3em;
+  }
+  .initial-line {
+    display: inline-block;
+    border-bottom: 1px solid #000;
+    min-width: 3.5em;
+    padding: 0 0.3em;
+    margin-right: 0.3em;
+  }
+  .sig-cell .label { font-weight: bold; display: block; margin-top: 0.2em; }
+  .sig-cell .role { font-size: 9pt; color: #555; display: block; margin-top: 0.1em; }
+  /* Invisible SignWell tags — white on white but still parsed by SignWell.
+     Width is set by padding so SignWell renders the signature field wide
+     enough to actually contain a signature. */
+  .tag {
+    color: #ffffff;
+    background: #ffffff;
+    font-size: 10pt;
+    padding: 0 3em;  /* forces wider bounding box for SignWell field sizing */
+    white-space: nowrap;
+  }
+  .tag-date {
+    color: #ffffff;
+    background: #ffffff;
+    font-size: 10pt;
+    padding: 0 1.5em;
+    white-space: nowrap;
+  }
+  .tag-initial {
+    color: #ffffff;
+    background: #ffffff;
+    font-size: 10pt;
+    padding: 0 0.7em;
+    white-space: nowrap;
+  }
+  .footer-note {
+    font-size: 9pt;
+    color: #555;
+    text-align: center;
+    margin-top: 2em;
+  }
+  .header-meta {
+    text-align: center;
+    margin-bottom: 1em;
+    font-size: 10pt;
+    color: #444;
+  }
+  .emph { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>Residential Lease Agreement</h1>
+<div class="header-meta">
+  {{ property_address }}<br>
+  Lease dated {{ lease_date }}
+</div>
+
+<p>
+  This Rental Agreement (&ldquo;Agreement&rdquo;) is entered into on
+  <b>{{ lease_date }}</b> between
+  <b>{{ primary_lessee_name }}</b>{% if num_lessees == 2 %}
+  and <b>{{ secondary_lessee_name }}</b>{% endif %}
+  (&ldquo;Tenant&rdquo; or &ldquo;Tenant(s)&rdquo;), and
+  (&ldquo;Landlord&rdquo; or &ldquo;Owner&rdquo;)
+  {{ landlord1_name }} &amp; {{ landlord2_name }},
+  for the Premises located at and identifiable as {{ property_address }}
+  (&ldquo;the Premises&rdquo;).
+</p>
+
+<p>
+  The Premises are for the sole use as a personal and primary residence
+  by the following named
+  <b>{{ num_residents }}</b> person(s) only:
+</p>
+<ol>
+  {% for r in residents %}
+  <li><b>{{ r.name }}</b> (birthdate: {{ r.dob }})</li>
+  {% endfor %}
+</ol>
+<p>
+  <b>No other person may reside at the Premises except as permitted by the
+  GUESTS / OCCUPANCY provisions of this Agreement or as otherwise required
+  by law.</b>
+</p>
+
+<ol class="clauses">
+
+<li><b>Term.</b> The term of this Agreement (&ldquo;Term&rdquo;) is for a
+period between <b>{{ start_date }}</b> and <b>{{ end_date }}</b>. It is a
+Fixed-Term Lease and shall terminate on <b>{{ end_date }}</b> at
+11:59&nbsp;PM. All terminations of tenancy must be given by written notice,
+at least 30 days prior to the intended termination date. Landlord may
+terminate the tenancy by giving written notice as provided by law. Such
+notices may be given on any date.</li>
+
+<li><b>Rent.</b> &ldquo;Rent&rdquo; shall mean all monetary obligations of
+Tenant(s) to Landlord under the terms of the Agreement, except security
+deposit and any amounts owed per any Separate Agreements Landlord and
+Tenant may sign contemporaneously with this Agreement. The initial monthly
+base rent for the Premises shall be <b>{{ rent }}</b>. All rent is due
+and payable in advance on the first day of each month and is delinquent on
+the next day and shall be paid every month thereafter (the &ldquo;Due
+Date&rdquo;) without offsets, deductions or credits. All rent shall be
+paid to {{ landlord1_name }} &amp; {{ landlord2_name }} or such other person or
+place as Owner may designate in writing in the future. Alternatively,
+Tenant(s) may deliver payment to: Attn: {{ landlord1_name }} &amp; {{ landlord2_name }},
+{{ landlord_payment_address }}. Tenant(s) agrees always to pay rent by direct
+deposit, agreed third-party app (Apartments.com), personal check, cashier&rsquo;s
+check, or money order and not to use cash. If any payment is returned for
+non-sufficient funds (&ldquo;NSF&rdquo;) or because Tenant(s) stops payment,
+then, after that: (i) the Landlord may, in writing, require Tenant(s) to pay
+Rent in cash for three months and (ii) all future Rent shall be paid by
+Money Order or Cashier&rsquo;s Check. A breach of this paragraph including
+any failure to pay rent or any failure to pay late fees is considered
+material and good cause for eviction under the Berkeley Rent Stabilization
+Ordinance (Berkeley Municipal Code Section 13.76.130).
+
+<p>Rent for this unit shall increase no less than annually, falling upon the
+year anniversary of the Tenant&rsquo;s possession of the Premises, and upon
+each subsequent time period of one year thereafter, in the amount and as
+allowed by the laws of the State of California and any Annual General
+Adjustments approved and publicized by the Berkeley Rent Stabilization Board
+(&ldquo;Rent Board&rdquo;). Rent may also increase at other times, as may be
+ordered or authorized by the Rent Board. Owner shall provide Tenant with at
+least thirty (30) days&rsquo; notice in writing of rent increases as required
+by law.</p>
+
+<p>Any other sums which may become due from Tenant(s) from time to time
+shall be considered rent and will be due on the Due Date. Rent for any
+partial month shall be pro-rated at the rate of 1/30th of the monthly rent
+per day. Owner may apply any payment made by Tenant(s) to any obligation of
+Tenant(s) to Owner notwithstanding any dates or other direction from
+Tenant(s) that accompanies any such payment. Any attempt by Tenant(s) to
+allocate a payment in any other way shall be null and void. Failure of
+Tenant(s) to pay rent or any other charges due, or to comply with any
+covenants or conditions of this Agreement, shall constitute a default and
+may be grounds for termination of the tenancy only as provided by applicable
+state and local law, including the Berkeley Rent Stabilization Ordinance.</p>
+
+<p>Pursuant to Civil Code Section 1785.26, you are hereby notified that a
+negative credit report reflecting on your credit record may be submitted to
+a credit reporting agency if you fail to fulfill the terms of your credit
+obligations, such as your financial obligations under the terms of this
+Agreement.</p>
+</li>
+
+<li><b>Security Deposit.</b> Landlord acknowledges receipt of
+<b>{{ security_deposit }}</b> as a security deposit{% if has_pets %} and
+<b>{{ pet_deposit }}</b> as a security deposit for {{ num_pets }}
+permitted pet(s){% endif %}. Tenant(s) may not use any portion of the
+security deposit to serve as last month&rsquo;s rent. The Landlord may use
+the security deposit to remedy any default in the performance of this
+Agreement, including but not limited to attorney&rsquo;s fees and other
+costs associated with Tenant(s)&rsquo;s breach, or to pay for damages
+caused by Tenant(s) or any other purpose allowed by law. Interest will be
+paid annually on unused portions of the security deposit as required by the
+Berkeley Rent Stabilization Ordinance. Within 21 days after Tenant(s)
+vacates Premises, Landlord shall: (1) furnish Tenant(s) an itemized
+statement indicating the amount of any security deposit received and the
+basis for its disposition and supporting documentation as required by
+California Civil Code 1950.5(g); and (2) return any remaining portion of
+the security deposit to Tenant(s). <b>Security deposit will not be returned
+until all Tenant(s) have vacated the Premises and all keys returned. Any
+security deposit returned by check shall be made out to all Tenant(s) named
+on this Agreement, or as subsequently modified.</b> If the Agent for the
+Owner applies all or any portion of the security deposit during the term of
+this Agreement for purposes permitted by California law, excluding ordinary
+wear and tear, Agent for the Owner may demand that Tenant(s) replenish the
+amount so applied. Failure by the Tenant(s) to replenish such amount five
+days after written demand by the Agent for the Owner will constitute a
+material breach of this Agreement and material and good cause for eviction
+under the Berkeley Rent Stabilization Ordinance.</li>
+
+<li><b>Late Payments / Returned Checks.</b> Tenant(s) and Owner agree that
+Owner will sustain damage on account of any late payment of rent but that
+it will be extremely difficult to fix or determine with specificity the
+actual amount of the damage. Therefore, Tenant(s) agrees to pay, as
+additional rent, a late charge equal to 5% of the unpaid rent for any
+payment of rent not received by Owner within four calendar days of the Due
+Date. The parties agree that this late charge represents a fair and
+reasonable estimate of the costs and damages that Owner will incur by
+reason of late payment by Tenant(s). The provision for payment of a late
+charge does not constitute a grace period and Owner may serve a 3-Day
+Notice to Pay Rent or Quit on the day after the Due Date. Owner and
+Tenant(s) agree that Tenant(s) paying rent four days after the Due Date on
+three separate occasions within any twelve-month period shall constitute
+habitual late payment of rent and may be considered a just cause for
+eviction. Landlord&rsquo;s acceptance of any late charge fee shall not
+constitute a waiver as to any default of Tenant(s). Landlord&rsquo;s right
+to collect a late charge fee shall not be deemed an extension of the date
+Rent is due or prevent Landlord from exercising any other rights and
+remedies under this Agreement and as provided by law. Payment of any such
+fee as discussed in this section shall be due upon Tenant&rsquo;s payment
+of the rent or 5 calendar days following the date upon which such fee was
+initially incurred and any failure to pay said fee within this period of
+time is considered material and good cause for eviction under the Berkeley
+Rent Stabilization Ordinance.</li>
+
+<li><b>Possession.</b> If Tenant(s) fail to take possession of the Premises,
+including any failure to move into the Premises, Tenant(s) shall still be
+responsible for paying rent and complying with all other terms of this
+Agreement from the date that Tenant(s) were otherwise first entitled to
+possession of the Premises. In the event Landlord is unable to deliver
+possession of the Premises to Tenant(s) for any reason, including failure
+of prior occupants to vacate, then Tenant(s) shall have the right to
+terminate this Agreement upon written notice. In such event,
+Landlord&rsquo;s liability to Tenant(s) shall be strictly limited to the
+return of the collective sum paid by Tenant(s) to Landlord comprised of any
+holding deposit, security deposit, or payment of rent for the anticipated
+terms of possession that Tenant was otherwise to enjoy but for the
+Landlord&rsquo;s failure to deliver possession as required by this
+Agreement.</li>
+
+<li><b>Furnishings.</b> The described Premises are leased furnished, to
+include all furnishings enumerated on the List of Furnishings, which is a
+part of this lease, signed by both parties and dated at the time of
+check-in. Tenant agrees to comply with all sanitary laws, ordinances and
+rules affecting the cleanliness, occupancy and preservation of the
+furnishings during the term of this lease. Tenant agrees to take good care
+of the furniture, carpets, draperies, appliances and other household goods,
+noted in the check-in document which are personal property of the Landlord,
+and further agrees that they will deliver up same to Landlord in good
+condition at the end of the term of this lease, with normal wear and tear
+expected.
+<p>Tenant shall repair or replace, at Tenant&rsquo;s expense, all loss or
+damage to any of the listed furniture, carpets, draperies, appliances and
+other household goods, and personal effects of Landlord, whenever such
+damage or loss shall have resulted from Tenant&rsquo;s misuse, waste or
+neglect of said furnishings.</p></li>
+
+<li><b>Storage.</b> Tenant(s) shall store only personal property Tenant(s)
+owns and shall not store property claimed by another or in which another
+has any right, title or interest. Tenant(s) shall not store any improperly
+packaged food or perishable goods, flammable materials, explosives,
+hazardous waste or other inherently dangerous material, or illegal
+substances. Tenant(s) acknowledges that s/he is doing so at their own risk
+and absolves owner of any damages or losses sustained while being stored on
+the Premises.</li>
+
+<li><b>Utilities.</b> Owner will be responsible for payment of gas,
+electric service, Internet, water, and trash service. Tenant(s) shall pay
+disposal of all trash, rubbish, garbage, and discarded items that are of a
+large size and any other material not ordinarily disposed of by regular
+garbage collection service. Tenant(s) is responsible for the rules and
+regulations set forth by the Waste Management company. Specifically, Tenant
+is responsible for following local ordinances about trash, compost, and
+recycling separation; for putting out and bringing in containers from the
+curb within reasonable time; and for returning containers to the security
+of the fenced side yard.</li>
+
+<li><b>Use.</b> Landlord rents the Premises to Tenant(s) for residential
+purposes only. Tenant(s) may not maintain or use the Premises in any way
+that increases the Landlord&rsquo;s cost of obtaining fire or liability
+insurance.</li>
+
+<li><b>Maintenance.</b> Tenant(s) shall properly use, operate and safeguard
+Premises, including if applicable, any landscaping, furniture, appliances
+and all mechanical, electrical, gas and plumbing fixtures, and keep them
+and the Premises clean, sanitary and well-ventilated. Tenant(s) shall be
+responsible for checking and maintaining all smoke detectors including but
+not limited to the replacement of batteries. Tenant(s) shall immediately
+notify Landlord, in writing, of any problem, malfunction or damage.
+Tenant(s) shall be charged for all repairs or replacements caused by
+Tenant(s), pets, guests or licensees of Tenant(s), excluding ordinary wear
+and tear. Tenant(s) shall be charged for all damage to Premises as a result
+of failure to report a problem in a timely manner. Tenant(s) shall be
+charged for repair of drain or plumbing blockages or stoppages, unless
+caused by defective plumbing parts or tree roots invading sewer lines.
+<p>Tenant(s)&rsquo;s failure to maintain any item for which Tenant(s) is
+responsible shall give Landlord the right to hire someone to perform such
+maintenance and charge Tenant(s) to cover the cost of such maintenance.</p></li>
+
+<li><b>No Smoking.</b> No smoking of any substance is allowed on the
+Premises. If smoking does occur on the Premises, (i) Tenant(s) is
+responsible for all damage caused by the smoking including, but not limited
+to stains, burns, odors and removal of debris; (ii) Tenant(s) is in breach
+of this Agreement; (iii) Tenant(s), guests and all others may be required
+to leave the Premises; and (iv) Tenant(s) acknowledges that in order to
+remove odor caused by smoking, Landlord may need to replace carpet and
+window coverings and paint the entire premises regardless of when these
+items were last cleaned, replaced, or repainted. Such actions and other
+necessary steps will impact the return of any security deposit. This
+Premise IS subject to the Berkeley Anti-Smoking Ordinance. Smoking is
+prohibited in Tenant&rsquo;s unit and all common areas of the multi-unit
+residence of more than four units as outlined in Berkeley&rsquo;s
+Anti-Smoking Ordinance. It is a violation for Tenant, or any other person
+subject to the control of the Tenant or present by invitation or permission
+of the Tenant, to engage in smoking in the Tenant&rsquo;s unit or any
+common area of the multi-unit residence. This smoking prohibition is a
+material term of the Lease/Rental Agreement, and breach of a material term
+by the Tenant may be considered material and good cause for eviction under
+the Berkeley Rent Stabilization Ordinance (Berkeley Municipal Code Section
+13.76.130). For purposes of this Section, the terms &ldquo;smoke&rdquo;,
+&ldquo;unit&rdquo;, &ldquo;common area&rdquo;, and &ldquo;multi-unit
+residence&rdquo; are as defined in the Berkeley Municipal Code, Chapter
+12.70. The use of medical cannabis by a person for whom using medical
+cannabis is not a crime under California law shall not constitute smoking
+in a unit of a multi-unit residence.</li>
+
+<li><b>Barbecue / Outdoor Cooking Safety.</b> The use of outdoor grilling
+equipment (including but not limited to charcoal briquette grills or
+smokers) is permitted only under the following conditions:
+<ul class="sub">
+  <li>Propane may not be used for grilling or kept on the premises.</li>
+  <li><b>Minimum Clearance:</b> All grilling equipment must be positioned
+  at least 10 feet (3 meters) away from any combustible structures. This
+  includes the exterior walls of the dwelling, porch railings, fences,
+  overhanging eaves, and low-hanging tree branches.</li>
+  <li><b>Prohibited Areas:</b> Grilling is strictly prohibited inside the
+  dwelling, under covered patios, or within any enclosed or partially
+  enclosed space.</li>
+  <li><b>Safe Surfaces:</b> Grills must be placed on a stable,
+  non-flammable surface (such as a concrete patio or pavers). Grilling on
+  dry grass is prohibited unless a fire-resistant grill mat specifically
+  designed for such use is placed underneath the unit.</li>
+  <li><b>Supervision and Maintenance:</b> Tenant must never leave an active
+  grill unattended. All ashes and coals from charcoal grills must be fully
+  extinguished and cooled for at least 24 hours before being disposed of in
+  a non-combustible container.</li>
+  <li><b>Compliance with Law:</b> Tenant agrees to comply with all local
+  municipal fire codes and &ldquo;Red Flag&rdquo; fire warnings issued by
+  local authorities.</li>
+</ul></li>
+
+<li><b>Locks.</b> Tenant(s) shall not change, alter, replace or add new
+locks without written consent of Landlord. Any locks so permitted to be
+installed shall become property of the Landlord and shall not be removed by
+Tenant(s). The Tenant(s) shall promptly give a duplicate key to any such
+changed, altered, replaced or new lock to Landlord. Any rekeying or
+alteration of locks on the unit or any refusal by Tenant to permit access
+to the unit in accordance with this section or with Civil Code 1954
+generally is considered material and good cause for eviction under the
+Berkeley Rent Stabilization Ordinance.</li>
+
+<li><b>Firearms.</b> Tenant, occupants, and guests shall not possess,
+display, use, or store any firearms, ammunition, explosives, or other
+weapons on or about the Premises, including any common areas, parking
+areas, or storage spaces, at any time during the tenancy. This prohibition
+applies regardless of whether such possession would otherwise be lawful
+under federal, state, or local law.
+<p>Tenant acknowledges that this restriction is a condition of occupancy
+agreed to as part of this Lease. A violation of this provision constitutes
+a material breach of the Lease and may result in termination of tenancy in
+accordance with California law.</p>
+<p>Nothing in this clause is intended to limit any rights that cannot
+lawfully be waived or restricted by private agreement.</p></li>
+
+<li><b>Occupancy.</b> Occupancy of the Premises shall not exceed five (5)
+persons overnight at any one time. Occupancy is limited to the adults named
+in this lease and any guests as outlined below.</li>
+
+<li><b>No Subletting or Assignment.</b> Tenant(s) shall not sublet any part
+of the Premises or assign this Agreement under any circumstances without
+the Owner&rsquo;s prior written consent and approval of any Tenant(s). Any
+sublet or assignment contrary to this provision shall be void and of no
+effect and any violation of this clause shall be deemed material and good
+cause for eviction under the Berkeley Rent Stabilization Ordinance.
+Occupancy by guests or other persons for more than ten consecutive days, or
+a total of 27 during the period of this agreement, is prohibited without
+Landlord&rsquo;s prior written consent and shall be considered a breach of
+this Agreement. Any proposed assignee, transferee or sublessee shall
+submit to Landlord an application and credit information for
+Landlord&rsquo;s approval and, if approved, sign a separate written
+agreement or new agreement with all tenants and Landlord. Landlord&rsquo;s
+consent to any one assignment, transfer or sublease, shall not be construed
+as consent to any subsequent assignment, transfer or sublease and does not
+release Tenant(s) of Tenant(s)&rsquo;s obligations under this Agreement.
+Posting of unauthorized names on the mailbox or utilities service in the
+name of another is a violation of this Agreement.
+&ldquo;Sublease&rdquo; or &ldquo;subletting&rdquo; means any arrangement
+by which the Tenant(s), in return for any compensation or thing of value,
+allows any other person to occupy the Property, or any part of the Property.
+&ldquo;Short term&rdquo; sublease means any sublease for a term of less
+than 30 continuous days. The Tenant(s) shall comply with all applicable
+laws and governmental regulations, including those prohibiting
+discrimination, in connection with any short-term subletting or other
+subletting. If the Tenant(s)&rsquo;s subleasing results in the imposition
+of any fines, penalties, damages, or legal or administrative proceedings
+are levied against the landlord or the property, the Tenant(s) shall
+reimburse the landlord for the full amount required to resolve the matter,
+including the payment of any fines, penalties or damages, and all costs of
+investigation, settlement and defense. Tenant(s) are prohibited from
+advertising, utilizing, or managing additional occupants of the home,
+through short term occupancy sites such as Airbnb, VRBO, or any website of
+a similar nature and structure. Use of the property in such manner will be
+considered an immediate material breach of this contract and good cause
+for eviction.
+<p>In the event that a material breach of this Agreement occurs and
+interest in this Agreement is found to be transferred, the successor(s) in
+interest are deemed to be subtenants of the Tenant(s) of this Agreement.
+The assignees in interest are not an &ldquo;original tenant&rdquo; under
+this Agreement. The departure of the last of Tenant(s) under this
+Agreement will be a &ldquo;vacancy event&rdquo; under the law.</p></li>
+
+<li><b>Neighborly Conduct.</b> All Tenant(s) shall be entitled to quiet
+enjoyment of the Premises. Tenant(s) and their guests or invitees shall
+not use the Premises or common areas in such a way as to: (1) violate any
+laws, (2) commit waste or nuisance, or (3) annoy, disturb, inconvenience
+or interfere with the quiet enjoyment and peace and safety of any
+neighbors or others with a right to be on the Premises. Tenant(s) agrees
+not to allow on his/her premises any excessive noise or other activity
+which disturbs the peace and quiet of other Tenant(s) in the building or
+violates Berkeley Municipal Code. Tenant(s) shall not use the Premises for
+any unlawful purposes, including, but not limited to, using, manufacturing,
+selling, storing or transporting illicit drugs or other contraband, or
+violate any law or ordinance, or commit a waste or nuisance on or about
+the Premises. Three disturbance complaints from other Tenant(s) or
+neighbors within a sixty-day period shall constitute a material breach of
+lease and good cause for eviction under the Berkeley Rent Stabilization
+Ordinance. Tenant(s) and each of them agree to indemnify Landlord for
+costs and expenses, including reasonable attorneys&rsquo; fees resulting
+from any violation by Tenant(s) of the provisions of this Section.</li>
+
+<li><b>Repairs and Alterations.</b> Except as provided by law or as
+authorized by the prior written consent of Landlord, Tenant(s) shall not
+make any repairs or alterations to the Premises including: painting,
+wallpapering, adding or changing locks including installation of keyed
+locks on interior doors, install antenna or satellite dish(es), placing
+signs, displays or exhibits. Tenant(s) may not use screws, fastening
+devices, large nails or adhesive materials that substantially alter or
+significantly damage the unit without prior approval from Landlord.
+Landlord shall not be responsible for the costs of alterations or repairs
+made by Tenant(s); (i) Tenant(s) shall not deduct from Rent the costs of
+any repairs, alterations or improvements unless otherwise agreed upon
+between Landlord and Tenant(s) in writing and (iii) any deduction made by
+Tenant(s) shall be considered unpaid Rent.</li>
+
+<li><b>Acceptance of Premises.</b> Tenant(s) acknowledge that they have
+examined the Premises, including carpets, window coverings, paint,
+appliances, and have found them to be in good, safe and cleaned condition
+and repair, except as otherwise noted in the &ldquo;Move-In/Move-Out
+Inspection Report.&rdquo; A blank copy of the inspection report is
+available at
+<a href="{{ checklist_url }}">{{ checklist_url }}</a>
+and will be completed and signed by both parties during the move-in
+walk-through. The completed report is incorporated into this Agreement
+by reference.</li>
+
+<li><b>Entry and Inspection.</b>
+<p>A. Tenant(s) shall make Premises available to Landlord or
+Landlord&rsquo;s representative for the purpose of entering to make
+necessary or agreed repairs (including, but not limited to, installing,
+repairing, testing, and maintaining smoke detectors and bracing, anchoring
+or strapping water heaters), decorations, alterations, or improvements, or
+to supply necessary or agreed services, or to show Premises to prospective
+or actual purchasers, Tenant(s), mortgagees, lenders, appraiser or
+contractors.</p>
+<p>B. Tenant has exclusive use of the back patio, which is classified as a
+Common Area for building operations. Landlord or agents may enter with
+reasonable notice for inspections or repairs. However, <b>no prior notice
+is required</b> for emergency repairs, routine gardening, pest control, or
+resetting building-wide systems. Tenant must keep all utility panels,
+pipes, hot water tanks and meters unobstructed at all times.</p>
+<p>C. Landlord and Tenant(s) agree that 24-hour written notice shall be
+reasonable and sufficient notice, except as follows. 48-hour written notice
+is required to conduct an inspection of the Premises prior to the
+Tenant(s) moving out, unless the Tenant(s) waives the right to such
+notice. Notice may be given orally to show the Premises to actual or
+prospective purchases provided Tenant(s) has been notified in writing
+within 120 days preceding the oral notice, that the Premises are for sale
+and that oral notice may be given to show the Premises. No notice is
+required: (i) to enter in case of an emergency; (ii) if the Tenant(s) is
+present and consents at the time of entry or (iii) if the Tenant(s) has
+abandoned or surrendered the Premises. No written notice is required if
+Landlord and Tenant(s) orally agree to an entry for agreed services or
+repairs if the date and time of entry are within one week of the oral
+agreement.</p>
+<p>D. Tenant(s) shall allow for entry by Owner or Owner&rsquo;s Agent for
+an annual inspection of the unit as dictated by the City of Berkeley&rsquo;s
+Residential Rental Inspection Program.</p></li>
+
+<li><b>Notice of Right to Inspection.</b> Pursuant to California Civil
+Code &sect;&nbsp;1950.5, you have the right to request the Owner make an
+inspection of the Premises prior to the termination of your tenancy for
+the purpose of giving you an opportunity to remedy deficiencies. This
+inspection can be conducted no earlier than two weeks prior to the
+termination of your tenancy and can be requested no earlier than three
+weeks prior to the termination of your tenancy. This inspection must be
+requested in writing to Owner or Owner&rsquo;s Agent. This inspection is
+intended to provide you with an opportunity to be aware of in advance and
+potentially avoid certain deductions from your security deposit upon
+vacating the Premises, but it is not a guarantee that any deduction will
+still not be made, nor shall deductible items/issues be necessarily
+limited to those observed in any such inspection.</li>
+
+<li><b>Tenant(s)&rsquo;s Financial Responsibility.</b> Tenant(s) agrees to
+accept responsibility for any damage to Premises caused by Tenant(s) or
+any of Tenant(s)&rsquo;s guests or invitees. Tenant(s) agrees to reimburse
+Landlord for any damage within three days on any written demand.
+Tenant(s) agree to accept financial responsibility for any loss or damage
+to personal property belonging to Tenant(s) and their guests and invitees
+caused by theft, fire or any other cause. Landlord assumes no liability
+for any such losses and recommends that Tenant(s) obtains a renter&rsquo;s
+insurance policy to cover Tenant(s)&rsquo;s liability, personal property
+damage and damage to the Premises.</li>
+
+<li><b>Joint and Individual Obligations.</b> If there is more than one
+Tenant(s), each one shall be individually and completely responsible for
+the performance of all obligations of Tenant(s) under this Agreement,
+jointly with every other Tenant(s), and individually, whether or not in
+possession.</li>
+
+<li><b>Roof and Attic.</b> Use of the roof and attic for any purpose by
+Tenant(s) and/or guests is not permitted. Any use other than for means of
+emergency exit are at the Tenant(s) risk and Tenant(s) hereby waive any
+claims against Owner for injury or death to any person resulting from
+misuse of said rooftop and attic.</li>
+
+<li><b>Neighborhood Conditions.</b> Tenant(s) is advised to satisfy him or
+herself as to neighborhood or area conditions, including schools,
+proximity and adequacy of law enforcement, crime statistics, proximity of
+registered felons or offenders, fire protection, other governmental
+services, availability, adequacy and cost of any wired, wireless Internet
+connections or other telecommunications or other technology services and
+installations, proximity to commercial, industrial or agricultural
+activities, existing and proposed and domestic animals, other nuisances,
+hazards, or circumstances, cemeteries, facilities and condition and
+influences of significance to certain cultures and/or religions, and
+personal needs, requirements and preferences of Tenant(s).</li>
+
+<li><b>Video Surveillance Disclosure.</b> Landlord discloses that video
+surveillance cameras are installed on the Property for security purposes.
+These cameras are located only in exterior and/or common areas, including
+but not limited to the front entry doorbell area and an exterior gate in
+the yard, and any functionally equivalent replacement locations. The
+cameras are positioned so as not to record the interior of any dwelling
+unit or areas where tenants have a reasonable expectation of privacy. The
+cameras are video-only and do not record audio. The surveillance system is
+intended solely to enhance the safety and security of the Property and its
+occupants and is not used to monitor Tenant&rsquo;s lawful activities,
+habits, or occupancy of the Premises. The cameras are not continuously
+monitored in real time. Access to recorded footage is limited to the
+Landlord and/or the Landlord&rsquo;s authorized agents and may be used
+only for security, safety, or legal purposes. Tenant acknowledges and
+consents to the presence of such video surveillance in the disclosed
+locations.</li>
+
+<li><b>Notice.</b> Any notice which either party may give, or is required
+to give by law, may be given by personal service or by mailing the same by
+first-class mail to Tenant(s) at the Premises, and to Owner at
+Owner&rsquo;s address set forth above or such other address designated by
+Owner.</li>
+
+<li><b>Temporary Relocation.</b> Subject to local law, Tenant(s) agrees,
+upon demand of Landlord, to temporarily vacate Premises for a reasonable
+period, to allow for fumigation (or other methods) to control wood
+destroying pests or other organisms, or other repairs to Premises.
+Tenant(s) agrees to comply with all instructions and requirements
+necessary to prepare Premises to accommodate pest control, fumigation or
+other work, including baggage or storage of food and medicine, and removal
+of perishables and valuables. Tenant(s) shall only be entitled to a
+credit of Rent equal to the per diem Rent for the period of time
+Tenant(s) is required to vacate Premises or as required by
+Berkeley&rsquo;s Relocation Ordinance.</li>
+
+<li><b>Damage to Premises.</b> If, by no fault of Tenant(s), Premises are
+totally or partially damaged or destroyed by fire, earthquake, accident or
+other casualty that render Premises totally or partially inhabitable,
+either Landlord or Tenant(s) may terminate Agreement by giving the other
+written notice. Rent shall be abated as of the date Premises become
+totally or partially inhabitable. The abated amount shall be the current
+monthly Rent prorated on a 30-day period. If the Agreement is not
+terminated, Landlord shall promptly repair damage, and Rent shall be
+reduced based on the extent to which the damage interferes with
+Tenant(s)&rsquo;s reasonable use of Premises. If damage occurs as a result
+of an act of Tenant(s) or Tenant(s)&rsquo;s guests, only Landlord shall
+have the right to termination, and no reduction of Rent shall be made.</li>
+
+<li><b>Breach of Contract / Early Termination.</b> Tenant(s) must give
+Landlord at least 30 days&rsquo; notice for intent of non-renewal of the
+original term of the Agreement. After the expiration of the original term
+of the Agreement, Tenant(s) may terminate the tenancy created by this
+Agreement by giving at least 30 days&rsquo; prior written notice to
+Landlord. Upon termination, Tenant(s) shall completely vacate the
+Premises and remove all personal property thereof, deliver all keys to
+Landlord or Landlord&rsquo;s agent, deliver the Premises to Landlord in
+the same condition as received excepting normal wear and tear, and give
+written notice of Tenant(s)&rsquo;s forwarding address. Any attempt by
+Tenant(s) to terminate this Agreement prior to the end of the original
+term shall be deemed to be a breach of this Agreement and Landlord shall
+be entitled to recover all damages occasioned thereby including leasing
+commissions, painting, advertising expenses, lost rent and utilities
+maintained to show the unit. Landlord shall make reasonable efforts to
+mitigate damages as required by California law. Any amounts recovered by
+Landlord through re-renting the Premises during the remainder of the
+original Term shall be credited against Tenant(s)&rsquo; liability.</li>
+
+<li><b>State Database Disclosure Notice.</b> The California Department of
+Justice, sheriff&rsquo;s department, and some police departments maintain
+for public access a database of the locations of persons required to
+register pursuant to paragraph (1) of subdivision (a) of Section 290.4 of
+the Penal Code. The Department of Justice also maintains a Sex Offender
+Identification Line through which inquiries about individuals may be made.
+(Civil Code Sec. 2079.10a).</li>
+
+<li><b>Megan&rsquo;s Law.</b> Notice: The California Department of
+Justice, sheriffs&rsquo; departments, police departments serving
+jurisdictions of 200,000 or more, and many other local law enforcement
+authorities maintain for public access a database of the locations of
+persons required to register pursuant to paragraph (1) of subdivision (a)
+of Section 290.4 of the Penal Code. The database is updated on a
+quarterly basis and is a source of information about the presence of
+these individuals in any neighborhood. The Department of Justice also
+maintains a Sex Offender Identification Line through which inquiries
+about individuals may be made. This is a &ldquo;900&rdquo; telephone
+service. Callers must have specific information about individuals they
+are checking. Information regarding neighborhoods is not available
+through the &ldquo;900&rdquo; telephone service.</li>
+
+<li><b>Insurance.</b> Owner&rsquo;s insurance does NOT provide for
+coverage of Tenant(s)&rsquo;s personal belongings or personal liability
+unless as a direct and proximate result of Owner&rsquo;s negligence.
+Therefore, Owner requires each Tenant(s) secure sufficient insurance to
+protect against losses such as fire, flood, theft, vandalism, personal
+injury, injury caused by pet or other casualty. Owner will NOT accept
+liability or responsibility for any losses not caused by its own proximate
+negligence.</li>
+
+<li><b>Interruption of Services.</b> Owner shall not be liable to
+Tenant(s) or to any other person in damages or otherwise, nor shall Owner
+be in default under this Agreement for any interruption or reduction of
+utilities or services caused by someone other than Owner.</li>
+
+<li><b>General.</b> The invalidity or partial invalidity of any provision
+of this Agreement shall not render the remainder of the Agreement invalid
+or unenforceable. Violation by Tenant(s) of any applicable ordinance or
+statute shall be deemed sufficient cause for termination of tenancy. No
+oral agreements have been entered into. This Agreement shall not be
+modified unless reduced to writing. Time is of the essence in this
+Agreement.</li>
+
+<li><b>No Waiver.</b> No failure of Owner to enforce any term of this
+Agreement will be deemed a waiver of that term or of any other term of
+the Agreement. The waiver by Owner of any term of this Agreement will not
+be deemed to be a waiver of any subsequent breach of the same or any
+other term of this Agreement, nor will any custom or practice which may
+develop between the parties be construed to waive or to lessen the right
+of Owner to insist upon performance by Tenant(s) of all the provisions of
+this Agreement. The subsequent acceptance of rent by Owner will not be
+deemed to be a waiver of any preceding breach by Tenant(s) of any term of
+this Agreement regardless of Owner&rsquo;s knowledge of such preceding
+breach at the time of acceptance of such rent. Owner&rsquo;s acceptance
+of a partial payment of rent will not constitute a waiver of Owner&rsquo;s
+right to the full amount due nor will Owner&rsquo;s acceptance of rent
+paid late ever constitute a waiver of Owner&rsquo;s right to evict
+Tenant(s) for habitual late payment of rent.</li>
+
+<li><b>Estoppel Certificates.</b> Tenant(s) and each of them, within ten
+(10) days after notice from Owner, shall execute and deliver to Owner a
+certificate or statement signed by Tenant(s) and each of them stating
+such information that may reasonably be requested by Owner, including, but
+not limited to, the amount of base rent currently paid, Tenant(s)&rsquo;s
+move-in date, the date of any last rent increase, the identity of
+furniture or fixtures that belong to Tenant(s), whether the rent includes
+any parking space or storage space, and the amount of any security
+deposit or prepaid rent and whether interest on said deposit has been
+paid and when. In addition, Tenant(s) shall disclose, upon request, any
+information which Tenant(s) believes would prevent any purchase of the
+Premises or would prevent Owner or potential owner from moving into the
+Premises. Failure to deliver the certificate within the ten (10) days
+shall be considered a material breach of this lease and good cause for
+eviction under the Berkeley Rent Stabilization Ordinance.</li>
+
+<li><b>Representation.</b> Tenant(s) warrants that all statements in
+Tenant(s)&rsquo;s rental application are accurate. Landlord requires all
+occupants 18 years of age or older and all emancipated minors to complete
+a lease rental application. Tenant(s) acknowledges this requirement and
+agrees to notify Landlord when any occupant of the Premises reaches the
+age of 18 or becomes an emancipated minor. Tenant(s) authorizes Landlord
+to obtain Tenant(s)&rsquo;s credit report periodically during the tenancy
+in connection with the modification or enforcement of this Agreement.
+Landlord may cancel this Agreement; (i) before occupancy begins; (ii) upon
+disapproval of the credit report(s); or (iii) at any time, upon
+discovering that information in Tenant(s)&rsquo;s application is false. A
+negative credit report reflecting on Tenant(s)&rsquo;s record may be
+submitted to a credit reporting agency if Tenant(s) fails to fulfill the
+terms of payment and other obligations under this Agreement.</li>
+
+<li><b>Waiver of Claims and Indemnification.</b> Tenant(s) hereby waive
+any claims against Owner for injury or death to any person or damage to
+any property in or about the Premises from any cause whatsoever, unless
+due to Owner&rsquo;s willful misconduct. Without limiting the generality
+of the foregoing, Tenant(s) expressly release Owner from any liability
+for loss or damage to property of Tenant(s) arising out of water leakage,
+breaking pipes, theft or other criminal activity. Landlord is not liable
+for loss or damage to Tenant(s)&rsquo;s personal property. Tenant(s)
+shall defend and indemnify Owner from and against any and all claims of
+liability for injury or death to any person, or damage to any property,
+caused in part or in whole by the act of omission of Tenant(s) to keep the
+Premises in good condition and repair in accordance with the terms hereof.</li>
+
+<li><b>Mediation.</b>
+<p>A. Landlord and Tenant(s) agree to mediate any dispute or claim arising
+between them out of this Agreement, or any resulting transaction, before
+resorting to court action. Mediation fees, if any, shall be divided
+equally among the parties involved. If, for any dispute or claim to which
+this paragraph applies, any party commences an action without first
+attempting to resolve the matter through mediation or refuses to mediate
+after a request has been made, then that party shall not be entitled to
+recover attorney fees, even if they would otherwise be available to that
+party in any such action.</p>
+<p>B. The following matters are excluded from mediation: (i) an unlawful
+detainer action; (ii) the filing or enforcement of a mechanic&rsquo;s
+lien; and (iii) any matter within the jurisdiction of a probate, small
+claims or bankruptcy court. The filing of a court action to enable the
+recording of a notice of pending action, for order of attachment,
+receivership, injunction, or other provisional remedies, shall not
+constitute a waiver of the mediation provision.</p></li>
+
+<li><b>Material Breach.</b> Certain obligations under this Agreement are
+material and essential to the tenancy, including but not limited to
+obligations relating to payment of rent, unauthorized occupancy,
+subletting, nuisance, damage to the Premises, safety-related provisions,
+and compliance with applicable laws. A material breach of this Agreement
+may be grounds for termination of tenancy as provided by applicable state
+and local law.</li>
+
+<li><b>Terminology.</b> Throughout this Agreement, the words Owner and
+Landlord are used and are meant to be synonymous. Tenant(s), when used in
+either the singular or the plural form herein, shall refer individually
+and collectively to each Tenant(s) signing this Agreement.</li>
+
+<li><b>Attorneys Fees.</b> In any legal action brought by either party
+to enforce the terms of this agreement or relating to the Premises,
+whether based in contract or in tort, the prevailing party will be
+entitled to reasonable attorney&rsquo;s fees, costs, and expenses incurred
+in connection with that action.</li>
+
+<li><b>Entire Agreement.</b> This Agreement consists of the foregoing
+numbered paragraphs as well as:
+<ol>
+  <li>Asbestos Addendum</li>
+  <li>Bedbug Addendum</li>
+  <li>Lead Warning Addendum</li>
+  <li>Insurance Addendum</li>
+  <li>Mold Notification Addendum</li>
+  {% if has_pets %}<li>Pet Addendum</li>{% endif %}
+  <li>Smoke Detector / Carbon Monoxide Detector Addendum</li>
+  <li>Tenant Protection Ordinance Notice</li>
+  <li>EPA Pamphlet: &ldquo;Protect Your Family from Lead in Your
+      Home&rdquo; (attached; receipt acknowledged in the Lead-Based
+      Paint Disclosure Addendum above)</li>
+  <li>Move-In / Move-Out Inspection Report (blank copy available at
+      <a href="{{ checklist_url }}">{{ checklist_url }}</a>;
+      completed and signed by both parties at move-in and
+      incorporated by reference)</li>
+</ol>
+</li>
+
+</ol>
+
+<p>Owner and Tenant acknowledge and agree that the drafting of this
+Agreement was the product of negotiations and was primarily negotiated in
+English. This Agreement shall not be construed against either Owner or
+Tenant on the ground that such person authored or drafted this Agreement.
+The foregoing constitutes the entire Agreement between the parties and
+may be modified only in writing signed by all parties except that Owner
+may change the terms of the tenancy and this Agreement pursuant to Civil
+Code Section 827 and other applicable laws.</p>
+
+<p>Tenant(s) hereby acknowledge(s) reading and understanding the terms of
+this agreement, and further acknowledge(s) receiving a copy hereof:</p>
+
+{# --- Main lease signature block --- #}
+{{ full_sig_block() }}
+
+{# =========================== ADDENDA =========================== #}
+
+<h2 class="first-addendum">Asbestos Addendum</h2>
+<p>This document is an Addendum and is part of the Rental/Lease Agreement
+dated <b>{{ lease_date }}</b> between {{ landlord1_name }} and
+{{ landlord2_name }} (Owners/Agents) and <b>{{ primary_lessee_name }}</b>{% if num_lessees == 2 %} and <b>{{ secondary_lessee_name }}</b>{% endif %}{{ ' ' }}
+(&ldquo;Tenant&rdquo; or &ldquo;Tenant(s)&rdquo;) for the Premises located
+at {{ property_address }}.</p>
+<p>(Owner/Agent: check one)</p>
+<p><b>[X]</b> This property <b>may</b> contain asbestos.</p>
+<p>OR</p>
+<p>[&nbsp;&nbsp;] This property contains asbestos. This hazardous substance
+is contained in some of the original building materials and in some of the
+products and materials used to maintain the property. Disturbance or damage
+to certain interior apartment surfaces may increase the potential exposure
+to these substances.</p>
+<ol>
+  <li>Tenant or Tenants&rsquo; guest(s), employees and contractors shall
+  not take or permit any action which in any way damages or disturbs the
+  Premises or any part thereof without the prior recent consent of the
+  Owner/Agent, including, but not limited to:
+  <ul class="sub">
+    <li>Piercing the surface of the ceiling by drilling or any other method;</li>
+    <li>Hanging plants, mobiles, or other objects from the ceiling;</li>
+    <li>Attaching any fixtures to the ceiling;</li>
+    <li>Permitting water or any liquid, other than ordinary steam
+    condensation, to come into contact with the ceiling;</li>
+    <li>Painting, cleaning, or undertaking any repairs of any portion of
+    the ceiling;</li>
+    <li>Replacing light fixtures;</li>
+    <li>Undertaking any activity which results in building vibration that
+    may cause damage to the ceiling.</li>
+  </ul></li>
+  <li>Resident shall notify Owner/Agent immediately in writing (i) if there
+  is any damage to or deterioration of the ceiling in the Premises or any
+  portion thereof, including, without limitation, flaking, loose, cracking,
+  hanging or dislodged materials, water leaks, or stains in the ceiling, or
+  (ii) upon the occurrence of any of the events described in Paragraph 1
+  above.</li>
+</ol>
+<p>The undersigned Tenant(s) acknowledge(s) having read and understood the
+foregoing.</p>
+
+{{ tenant_sig_block() }}
+
+<h2>Bedbug Addendum</h2>
+<p>This document is an Addendum and is part of the Rental/Lease Agreement,
+dated <b>{{ lease_date }}</b> between {{ landlord1_name }} and
+{{ landlord2_name }} (Owners/Agents) and <b>{{ primary_lessee_name }}</b>{% if num_lessees == 2 %} and <b>{{ secondary_lessee_name }}</b>{% endif %}{{ ' ' }}
+(&ldquo;Tenant&rdquo; or &ldquo;Tenant(s)&rdquo;) for the Premises located
+at {{ property_address }}.</p>
+
+<p>It is our goal to maintain the highest quality living environment for
+our Residents. The Owner/Agent has inspected the unit prior to lease and
+knows of no bedbug infestation. Residents have an important role in
+preventing and controlling bed bugs. While the presence of bed bugs is not
+always related to personal cleanliness or housekeeping, good housekeeping
+will help control the problem by identifying bed bugs, minimizing an
+infestation, and limiting its spread.</p>
+
+<p>Resident(s) represent(s) that all furnishings and other personal
+property that will be moved into the unit are free of bedbugs.</p>
+
+<p>Resident agrees to maintain the Premises in a manner that prevents the
+occurrence of a bedbug infestation in the Premises. Resident agrees to
+uphold this responsibility in part by complying with the following list of
+responsibilities:</p>
+
+<ol>
+<li>Resident shall practice good housekeeping, including the following:
+<ul class="sub">
+  <li>Resident shall <b>remove</b> clutter. Bed bugs like dark, concealed
+  places, such as in and around piles of clothing, shoes, stuffed animals,
+  laundry, especially under the bed and in closets. Reducing clutter also
+  makes it easier to carry out housekeeping.</li>
+  <li>Resident shall <b>keep the unit clean.</b> Vacuum and dust regularly,
+  particularly in the bedroom, being especially thorough around and under
+  the bed, drapes, and furniture. Use a brush attachment to vacuum
+  furniture legs, headboard, and in and around the nightstand. While
+  cleaning, look for signs of bed bugs, and report these immediately.</li>
+  <li>Residents shall <b>avoid using secondhand furnishings that have not
+  been thoroughly inspected for the presence of bedbugs</b>, especially
+  bed-frames, mattresses and box springs. If rental furnishings are used
+  make sure that the furniture rental company has established procedures
+  for the inspection and identification of bedbugs or other pests. This
+  process should include inspection of rental furniture inventory and
+  trucks used to transport rental furniture. It should also include a
+  predelivery and pre-pickup inspection by the furniture rental company of
+  the Premises to which the rental furniture is being delivered. Never
+  accept an item that shows signs of bedbugs. Never take discarded items
+  from the curbside.</li>
+  <li>Resident shall <b>cover mattresses and box springs with zippered
+  covers that are impermeable to bed bugs</b>. These are relatively
+  inexpensive, and can prevent bed bugs from getting inside the mattress,
+  their favorite nesting spot. The covers will also prevent any bugs
+  inside from getting out; they will eventually die inside the sealed
+  cover (though this may take many months). Thicker covers will last
+  longer.</li>
+  <li>Resident shall <b>arrange furniture to minimize bed bug hiding
+  places</b>. If possible, keep beds and upholstered furniture several
+  inches away from the walls. Bed bugs can jump as far as three inches.</li>
+  <li>Resident shall <b>check for hitch-hiking bedbugs</b>. If you stay
+  in a hotel or another home, inspect your clothing, luggage, shoes, and
+  belongings for signs of bed bugs before you enter your apartment. Check
+  backpacks, shoes, and clothing after visits to friends or family,
+  theaters, or after using public transportation. After guests visit,
+  inspect beds, bedding, and upholstered furniture.</li>
+</ul></li>
+<li>Resident shall report any problems immediately. Specifically, Resident
+shall:
+<ul class="sub">
+  <li><b>Report any signs of bed bugs immediately.</b> Do not wait. Even a
+  few bugs can rapidly multiply to create a major infestation that can
+  spread from unit to unit.</li>
+  <li><b>Report any maintenance needs immediately.</b> Bed bugs like
+  cracks, crevices, holes, and other openings. Request that all openings
+  be sealed to prevent the movement of bed bugs from room to room.</li>
+</ul></li>
+<li>Resident shall cooperate with pest control efforts.
+<p>If your unit (or a neighbor&rsquo;s unit) is infested with bed bugs, a
+pest management professional may be called in to apply pesticides. The
+treatment is more likely to be effective if your unit is properly prepared.
+Resident complies with the recommendations from the pest management
+professional, including:</p>
+<ul class="sub">
+  <li><b>Removing all bedding</b> (bed skirts too), drapes, curtains, and
+  small rugs; bag these for transport to the laundry or dry cleaner.</li>
+  <li><b>Checking mattresses carefully</b>; those with minimal infestation
+  may be cleaned, encased in vinyl covers, and returned to service. Heavily
+  infested mattresses are not salvageable; seal these in plastic and
+  dispose of them properly.</li>
+  <li><b>Emptying dressers, nightstands, and closets.</b> Remove all items
+  from floors and surfaces. Inspect every item for signs of bed bugs.
+  Using sturdy plastic bags, bag all clothing, shoes, boxes, toys, stored
+  goods, etc. Bag washable and non-washable items separately. Take care
+  not to tear the bags, and seal them well. Used bags must be discarded
+  properly.</li>
+  <li><b>Vacuuming floors</b>, including inside closets. Pay special
+  attention to corners, cracks, and dark places.</li>
+  <li><b>Vacuuming all furniture</b>, including inside drawers and
+  nightstands. Vacuum mattresses, box springs, and upholstered furniture,
+  being sure to remove and vacuum all sides of loose cushions, as well as
+  the undersides of furniture.</li>
+  <li><b>Carefully removing vacuum bags</b>, sealing bags in plastic, and
+  discarding.</li>
+  <li><b>Cleaning all machine-washable bedding, drapes, clothing, etc.</b>
+  Use the hottest water the machine provides, and dry at highest heat
+  setting. Take other items to a dry cleaner, but be sure to advise the dry
+  cleaner that the items are infested. Discard any items that cannot be
+  decontaminated.</li>
+  <li><b>Moving furniture toward the center of the room</b>, so that
+  technicians can easily treat carpet edges where bed bugs congregate, as
+  well as walls and furniture surfaces. Be sure to leave easy access to
+  closets.</li>
+</ul></li>
+<li>Resident agrees to indemnify and hold harmless the Owner/Agent from
+any actions, claims, losses, damages, and expenses, including, but not
+limited to, attorneys&rsquo; fees that the Owner/Agent may sustain or
+incur as a result of the negligence of the Resident or any guest or other
+person living in, occupying, or using the Premises.</li>
+</ol>
+
+<p><b>California Civil Code &sect;&nbsp;1954.603(a) &mdash; Information
+about Bed Bugs</b></p>
+<p><b>Bedbug Appearance:</b> Bed bugs have six legs. Adult bed bugs have
+flat bodies about 1/4 of an inch in length. Their color can vary from red
+and brown to copper colored. Young bed bugs are very small. Their bodies
+are about 1/16 of an inch in length. They have almost no color. When a bed
+bug feeds, its body swells, may lengthen, and becomes bright red,
+sometimes making it appear to be a different insect. Bed bugs do not fly.
+They can either crawl or be carried from place to place on objects,
+people, or animals. Bed bugs can be hard to find and identify because they
+are tiny and try to stay hidden.</p>
+<p><b>Life Cycle and Reproduction:</b> An average bed bug lives for about
+10 months. Female bed bugs lay one to five eggs per day. Bed bugs grow to
+full adulthood in about 21 days. Bed bugs can survive for months without
+feeding.</p>
+<p><b>Bedbug Bites:</b> Because bed bugs usually feed at night, most people
+are bitten in their sleep and do not realize they were bitten. A
+person&rsquo;s reaction to insect bites is an immune response and so
+varies from person to person. Sometimes the red welts caused by the bites
+will not be noticed until many days after a person was bitten, if at all.</p>
+<p>Common signs and symptoms of a possible bed bug infestation:</p>
+<ul class="sub">
+  <li>Small red to reddish brown fecal spots on mattresses, box springs,
+  bed frames, mattresses, linens, upholstery, or walls.</li>
+  <li>Molted bed bug skins, white, sticky eggs, or empty eggshells.</li>
+  <li>Very heavily infested areas may have a characteristically sweet
+  odor.</li>
+  <li>Red, itchy bite marks, especially on the legs, arms, and other body
+  parts exposed while sleeping.</li>
+</ul>
+<p>However, some people do not show bed bug lesions on their bodies even
+though bed bugs may have fed on them.</p>
+<p>For more information, see the Internet Web sites of the United States
+Environmental Protection Agency and the National Pest Management
+Association: https://www.epa.gov/bedbugs and
+http://www.npmapestworld.org/</p>
+<p>The undersigned Resident(s) acknowledge(s) having read and understood
+the foregoing:</p>
+
+{{ tenant_sig_block() }}
+
+<h2>Lead-Based Paint Disclosure Addendum</h2>
+<p><b>[24 Code of Federal Regulations section 35.80&ndash;35.92]</b></p>
+<p><b>LEAD WARNING STATEMENT</b></p>
+<p><i>Housing built before 1978 may contain lead-based paint. Lead from
+paint, paint chips and dust can pose health hazards if not managed
+properly. Lead exposure is especially harmful to young children and
+pregnant women. Before renting pre-1978 housing, owners must disclose the
+presence of known lead-based paint and/or lead-based paint hazards in the
+dwelling. Renters must also receive a federally approved pamphlet on lead
+poisoning prevention.</i></p>
+<p><b>LANDLORD&rsquo;S DISCLOSURE (initial where appropriate)</b></p>
+<p>
+<span class="initial-line"><span class="tag-initial">{{ '{{initial:3}}' }}</span></span>
+<b>[X]</b> Landlord has <b>no</b> knowledge of lead-based paint and/or
+lead-based paint hazards in the Premises. Landlord has no reports or
+records pertaining to lead-based paint and/or lead-based paint hazards in
+the Premises, OR</p>
+<p>
+<span class="initial-line">&nbsp;</span>
+<span class="initial-line">&nbsp;</span>
+[&nbsp;&nbsp;] Landlord has knowledge of lead-based paint and/or
+lead-based paint hazards that are present in the Premises and has provided
+the Resident with all available records and reports pertaining to
+lead-based paint and/or lead-based paint hazards in the Premises. The
+following documents have been provided: N/A</p>
+<p><b>RESIDENT&rsquo;S ACKNOWLEDGMENT</b></p>
+<p>
+<span class="initial-line"><span class="tag-initial">{{ '{{initial:1}}' }}</span></span>
+{% if num_lessees == 2 %}<span class="initial-line"><span class="tag-initial">{{ '{{initial:2}}' }}</span></span>{% endif %}
+<b>[X]</b> Resident has received the pamphlet <i>&ldquo;Protect Your
+Family From Lead In Your Home&rdquo;</i> and copies of all documents
+listed above, if any. Resident agrees to promptly notify owner of any
+deteriorated and/or peeling paint.</p>
+<p><b>REAL ESTATE AGENT&rsquo;S ACKNOWLEDGMENT</b> (initial only if agent
+involved in rental process)</p>
+<p>[N/A] Real estate agent has informed the Landlord of the
+Landlord&rsquo;s obligation under 42 U.S.C. 4852d and is aware of his/her
+responsibility to ensure compliance.</p>
+<div style="page-break-inside: avoid; break-inside: avoid;">
+<p><b>CERTIFICATION OF ACCURACY</b></p>
+<p>The following parties have received the information above and certify,
+to the best of their knowledge, that the information they have provided is
+true and accurate.</p>
+<p>Property Address: {{ property_address }}</p>
+
+{{ full_sig_block() }}
+</div>
+
+<h2>Insurance Addendum to Rental Agreement</h2>
+<p>I acknowledge that I have been advised that Owner or Management is not
+responsible for any damage to my personal property in their building or on
+their property due to uncontrollable causes such as fire, water, theft,
+vandalism, etc. Therefore, I realize it is in my best interest to carry
+Renters Insurance.</p>
+<p><b>Insurance Facts for Tenants</b></p>
+<ul class="sub">
+  <li>Generally, except under special circumstances, the OWNER IS NOT
+  legally responsible for loss to the tenant&rsquo;s personal property,
+  possessions or personal liability, and OWNER&rsquo;S INSURANCE WILL NOT
+  COVER such losses or damage.</li>
+  <li>If damages or injury to owner&rsquo;s property is caused by
+  resident, resident&rsquo;s guest(s) or child (children), the
+  owner&rsquo;s insurance company may have the right to attempt to recover
+  from the tenant(s) payments made under owner&rsquo;s policy.</li>
+  <li>If you desire to protect yourself and your property against loss,
+  damage, or liability, the owner strongly recommends you consult with
+  your insurance agent and obtain appropriate coverage for fire, theft,
+  liability, workers&rsquo; compensation and other perils.</li>
+</ul>
+<p>The cost is reasonable considering the peace of mind, the protection,
+and the financial recovery of loss that you get if you are adequately
+protected by insurance.</p>
+<p>Do you carry or are you planning to carry Renters Insurance?
+<b>{{ renters_insurance }}</b></p>
+
+{{ tenant_sig_block() }}
+
+<h2>Mold Notification</h2>
+<p>THIS AGREEMENT is made and entered into between {{ landlord1_name }}
+and {{ landlord2_name }} (Owners/Agents) and <b>{{ primary_lessee_name }}</b>{% if num_lessees == 2 %} and <b>{{ secondary_lessee_name }}</b>{% endif %}{{ ' ' }}
+(&ldquo;Tenant&rdquo; or &ldquo;Tenant(s)&rdquo;). Tenant(s) is renting
+from Owner/Agent the Premises located at: {{ property_address }}.</p>
+
+<p>It is our goal to maintain the highest quality living environment for
+our residents. Therefore, know that the Owner/Agent has inspected the unit
+prior to lease and knows of no damp or wet building materials and knows of
+no mold or mildew contamination. Resident is hereby notified that mold,
+however, can grow if the Premises are not properly maintained or
+ventilated. If moisture is allowed to accumulate in the unit, it can cause
+mildew and mold to grow. It is important that Residents regularly allow
+air to circulate in the apartment. It is also important that Residents
+keep the interior of the unit clean and that they promptly notify the
+Owner/Agent of any leaks, moisture problems, and/or mold growth.</p>
+
+<p>Resident agrees to maintain the Premises in a manner that prevents the
+occurrence of an infestation of mold or mildew in the Premises. Resident
+agrees to uphold this responsibility in part by complying with the
+following list of responsibilities:</p>
+
+<ol>
+  <li>Resident agrees to keep the unit free of dirt and debris that can
+  harbor mold.</li>
+  <li>Resident agrees to immediately report to the Owner/Agent any water
+  intrusion, such as plumbing leaks, drips, or &ldquo;sweating&rdquo;
+  pipes.</li>
+  <li>Resident agrees to notify owner of overflows from bathroom, kitchen,
+  or unit laundry facilities, especially in cases where the overflow may
+  have permeated walls or cabinets.</li>
+  <li>Resident agrees to report to the Owner/Agent any significant mold
+  growth on surfaces inside the Premises.</li>
+  <li>Resident agrees to allow the Owner/Agent to enter the unit to
+  inspect and make necessary repairs.</li>
+  <li>Resident agrees to use bathroom fans while showering or bathing and
+  to report to the Owner/Agent any non-working fan.</li>
+  <li>Resident agrees to use exhaust fans whenever cooking, dishwashing,
+  or cleaning.</li>
+  <li>Resident agrees to use all reasonable care to close all windows and
+  other openings in the Premises to prevent outdoor water from penetrating
+  into the interior unit.</li>
+  <li>Resident agrees to clean and dry any visible moisture on windows,
+  walls, and other surfaces, including personal property, as soon as
+  reasonably possible. (Note: Mold can grow on damp surfaces within 24 to
+  48 hours.)</li>
+  <li>Resident agrees to notify the Owner/Agent of any problems with the
+  air conditioning or heating systems that are discovered by the
+  Resident.</li>
+  <li>Resident agrees to indemnify and hold harmless the Owner/Agent from
+  any actions, claims, losses, damages, and expenses, including, but not
+  limited to, attorneys&rsquo; fees and associated court costs that the
+  Owner/Agent may sustain or incur as a result of the negligence of the
+  Resident or any guest or other person living in, occupying, or using the
+  Premises.</li>
+</ol>
+
+{{ tenant_sig_block() }}
+
+<h2>Smoke &amp; Carbon Monoxide Detector Disclosure Addendum</h2>
+<p><b>[California Health &amp; Safety Code section 13260]</b></p>
+<p>THIS agreement is an Addendum and part of the Rental Agreement dated
+<b>{{ lease_date }}</b> between Landlord and Resident with reference to
+the property located at: {{ property_address }}.</p>
+<p>IN CONSIDERATION of their mutual promises, Landlord and Resident agree
+as follows:</p>
+<ol>
+  <li>The Premises are equipped with smoke and carbon monoxide detection
+  device(s).</li>
+  <li>Resident(s) acknowledge the smoke and carbon monoxide detection
+  device(s) was (were) tested and its operation explained by Landlord in
+  the presence of Resident at the time of initial residency and the
+  detectors was (were) operating properly at that time.</li>
+  <li>Each Resident shall perform the Manufacturer&rsquo;s recommended
+  test to determine if the smoke and carbon monoxide detectors are
+  operating properly at least once a week.</li>
+  <li>If the smoke and carbon monoxide detection device is battery
+  operated, Resident has been informed that the detector is battery
+  operated and it shall be each Resident&rsquo;s responsibility to:
+  <ul class="sub">
+    <li>ensure that the battery is in operating condition at all times,</li>
+    <li>replace the battery as needed (unless otherwise provided by law),
+    and</li>
+    <li>if, after replacing battery, the carbon monoxide detector(s) does
+    (do) not work, Resident must inform the Landlord immediately in
+    writing.</li>
+  </ul></li>
+  <li>Resident must inform the Landlord immediately in writing of any
+  defect, malfunction or failure of any detector(s).</li>
+  <li>Resident shall allow Landlord access to the rental unit to inspect
+  the smoke and carbon monoxide detection device in accordance with
+  California Civil Code section 1954.</li>
+</ol>
+
+{{ tenant_sig_block() }}
+
+{% if has_pets %}
+<h2>Pet Addendum</h2>
+<p>This agreement is an Addendum and part of the Rental Agreement and/or
+Lease dated <b>{{ lease_date }}</b> between Landlord and Resident with
+reference to the property located at {{ property_address }}.</p>
+<p>In consideration of their mutual promises Landlord and Resident agree
+the following pets will reside on the Premises:</p>
+<p>Number of pets: <b>{{ num_pets }}</b></p>
+<p>Description of pets: <b>{{ pet_description }}</b></p>
+
+{{ full_sig_block() }}
+{% endif %}
+
+<h2>Notice of Tenant Protection Ordinance</h2>
+<p>In March 2017, the City Council adopted the Tenant Protection
+Ordinance, to prohibit illegal evictions through the use of fraudulent
+and/or misleading representations, intimidating conduct, and coercive
+conduct.</p>
+<p>Among other things, the Tenant Protection Ordinance prohibits conduct
+that may coerce a tenant to vacate a rental unit involuntarily. The
+following is only a summary of the illegal conduct; for a complete list,
+you are advised to review the attached copy of the Tenant Protection
+Ordinance, or review Berkeley Municipal Code 13.79.060.</p>
+<p>Landlords must not, in bad faith, engage in any of the following
+conduct:</p>
+<ul class="sub">
+  <li>Lies, threats, or use of violence to induce a Tenant to move.</li>
+  <li>Threats regarding immigration status.</li>
+  <li>Disruption of services to the rental unit.</li>
+  <li>Interference with the right of privacy, including inquiries about
+  immigration status.</li>
+  <li>Abuse of the right of access to the rental unit.</li>
+  <li>Exploitation of disabilities or other traits of the Tenant.</li>
+  <li>Failure to perform and complete repairs in a timely and professional
+  manner.</li>
+  <li>Threats not to perform repairs and maintenance.</li>
+  <li>Failure to accept or acknowledge receipt of a Tenant&rsquo;s rent,
+  or to promptly deposit the rent, or to refuse to provide a receipt.</li>
+  <li>Violations of the Tenant Buyout Ordinance (B.M.C. 13.79.050).</li>
+  <li>Engagement of any Tenant in any form of human trafficking as a
+  condition of that Tenant&rsquo;s continued occupancy of a Rental Unit.</li>
+</ul>
+<p><b>Note: A tenant aggrieved by violations of the Tenant Protection
+Ordinance may bring a civil action in court against the landlord.
+Violators may be held liable for damages (including emotional distress,
+and an additional penalty of up to $5,000 for each violation against any
+person who is disabled or age sixty-five or over), court costs, and
+attorney&rsquo;s fees. For violations related to repairs, Tenants must
+first provide fifteen days&rsquo; notice of the violations (see B.M.C.
+13.79.060.E.2).</b></p>
+<p><b>The City, or the Rent Board at the City&rsquo;s behest, may also
+file a civil action to enforce the Tenant Protection Ordinance.</b></p>
+<div style="page-break-inside: avoid; break-inside: avoid;">
+<p>If you are experiencing any of the conduct detailed above, you may
+contact the Rent Board for more information, at (510) 981-7368 or
+rent@berkeleyca.gov.</p>
+<p><i>This disclosure notice is required to be provided at the inception
+of any tenancy beginning after April 2017, and must be included with any
+eviction notice. Failure to include this notice is a defense to unlawful
+detainer (eviction).</i></p>
+
+<p class="footer-note">
+  2125 Milvia Street, Berkeley, California 94704 &middot;
+  TEL (510) 981-7368 &middot;
+  rent@berkeleyca.gov &middot;
+  rentboard.berkeleyca.gov
+</p>
+</div>
+
+</body>
+</html>

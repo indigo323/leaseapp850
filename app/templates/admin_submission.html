@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Submission {{ record.id }}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wide">
+  {% if request.query_params.get("error") %}
+  <div class="card" style="background:#fff0f0;border-left:4px solid #8b0000;margin-bottom:1rem">
+    <strong style="color:#8b0000">SignWell error:</strong>
+    {{ request.query_params.get("error") }}
+  </div>
+  {% endif %}
+  <nav class="admin-nav">
+    <div>
+      <a href="/admin/" class="muted">&larr; All submissions</a>
+      <h1>{{ ctx.primary_lessee_name }}</h1>
+    </div>
+    <div>
+      <span class="status-pill status-{{ record.status }}">
+        {{ record.status|replace("_", " ") }}
+      </span>
+      &middot;
+      <a href="/admin/logout">Log out</a>
+    </div>
+  </nav>
+
+  <section class="card">
+    <h2>Applicant</h2>
+    <dl>
+      <dt>Primary lessee</dt>
+      <dd>
+        {{ ctx.primary_lessee_name }}
+        &lt;<a href="mailto:{{ ctx.primary_lessee_email }}">{{ ctx.primary_lessee_email }}</a>&gt;
+        &middot; {{ ctx.primary_lessee_phone }}
+      </dd>
+      {% if ctx.num_lessees == 2 %}
+      <dt>Secondary lessee</dt>
+      <dd>
+        {{ ctx.secondary_lessee_name }}
+        &lt;<a href="mailto:{{ ctx.secondary_lessee_email }}">{{ ctx.secondary_lessee_email }}</a>&gt;
+        &middot; {{ ctx.secondary_lessee_phone }}
+      </dd>
+      {% endif %}
+      <dt>Emergency contact</dt>
+      <dd>{{ ctx.emergency_contact_name }} &middot; {{ ctx.emergency_contact_phone }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Lease terms</h2>
+    <dl>
+      <dt>Property</dt><dd>{{ ctx.property_address }}</dd>
+      <dt>Dates</dt><dd>{{ ctx.start_date }} &rarr; {{ ctx.end_date }}</dd>
+      <dt>Rent</dt><dd>{{ ctx.rent }} / month</dd>
+      <dt>Security deposit</dt><dd>{{ ctx.security_deposit }}</dd>
+      {% if ctx.has_pets %}
+      <dt>Pets</dt><dd>
+        {{ ctx.num_pets }} &middot; {{ ctx.pet_description }}<br>
+        Pet deposit: {{ ctx.pet_deposit }}
+      </dd>
+      {% else %}
+      <dt>Pets</dt><dd class="muted">None</dd>
+      {% endif %}
+      <dt>Renters insurance</dt><dd>{{ ctx.renters_insurance }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Residents ({{ ctx.num_residents }})</h2>
+    <ol>
+      {% for r in ctx.residents %}
+      <li>{{ r.name }} <span class="muted">({{ r.dob }})</span></li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Generated lease</h2>
+    <p>
+      <a href="/admin/submission/{{ record.id }}/lease.pdf"
+         target="_blank" rel="noopener">
+        Open generated PDF &rarr;
+      </a>
+      <span class="muted small">Opens in a new tab. Review before approving.</span>
+    </p>
+  </section>
+
+  {% if record.status in ("pending_review", "changes_requested") %}
+  <section class="card actions">
+    <h2>Actions</h2>
+
+    <form method="post" action="/admin/submission/{{ record.id }}/approve"
+          onsubmit="return confirm('Approve this application and send to SignWell?');">
+      <button type="submit" class="btn-primary">
+        Approve &amp; send to SignWell
+      </button>
+      <span class="hint">Generates the lease PDF, uploads to SignWell,
+        emails the applicant and both landlords for signature.</span>
+    </form>
+
+    <hr>
+
+    <form method="post" action="/admin/submission/{{ record.id }}/request-changes">
+      <label>Request a correction (applicant sees this note):
+        <textarea name="note" rows="3" required
+                  placeholder="e.g. Please double-check the birthdate for Resident 2."></textarea>
+      </label>
+      <button type="submit" class="btn-secondary">
+        Send correction request
+      </button>
+      <span class="hint">Emails the applicant a one-time link to update
+        their answers.</span>
+    </form>
+
+    <hr>
+
+    <form method="post" action="/admin/submission/{{ record.id }}/decline"
+          onsubmit="return confirm('Decline this application? This cannot be undone.');">
+      <label>Internal decline note (not sent to applicant)
+        <input type="text" name="reason">
+      </label>
+      <button type="submit" class="btn-danger">Decline application</button>
+    </form>
+  </section>
+  {% elif record.status == "approved" %}
+  <section class="card">
+    <h2>Approved</h2>
+    <p>
+      Sent to SignWell.
+      {% if record.signwell_document_id %}
+        Document ID: <code>{{ record.signwell_document_id }}</code>
+      {% endif %}
+    </p>
+  </section>
+  {% elif record.status == "declined" %}
+  <section class="card">
+    <h2>Declined</h2>
+    <p class="muted">This application was declined.</p>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>History</h2>
+    <ul class="timeline">
+      {% for entry in record.history %}
+      <li>
+        <span class="timeline-date">{{ entry.at[:16]|replace("T", " ") }}</span>
+        <span class="timeline-event">{{ entry.event|replace("_", " ") }}</span>
+        {% if entry.note %}<div class="timeline-note">{{ entry.note }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</main>
+</body>
+</html>

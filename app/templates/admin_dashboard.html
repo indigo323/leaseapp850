@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lease admin</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wide">
+  <nav class="admin-nav">
+    <h1>Lease admin</h1>
+    <div>
+      <span class="muted">{{ total }} submission{{ "s" if total != 1 else "" }}</span>
+      &middot;
+      <a href="/admin/logout">Log out</a>
+    </div>
+  </nav>
+
+  {% macro bucket(title, items, empty_msg, css_class="") %}
+    <section class="bucket {{ css_class }}">
+      <h2>{{ title }} <span class="count">{{ items|length }}</span></h2>
+      {% if items %}
+        <table class="submissions">
+          <thead>
+            <tr>
+              <th>Applicant</th>
+              <th>Move-in</th>
+              <th>Submitted</th>
+              <th>Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in items %}
+            <tr>
+              <td>
+                <strong>{{ r.form_data.primary_lessee_name or "—" }}</strong>
+                <div class="muted small">{{ r.form_data.primary_lessee_email or "" }}</div>
+              </td>
+              <td>{{ r.form_data.start_date or "—" }}</td>
+              <td class="small muted">{{ r.created_at[:10] }}</td>
+              <td class="small muted">{{ r.updated_at[:16]|replace("T", " ") }}</td>
+              <td><a href="/admin/submission/{{ r.id }}">Open &rarr;</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">{{ empty_msg }}</p>
+      {% endif %}
+    </section>
+  {% endmacro %}
+
+  {{ bucket("Pending review",        buckets.pending_review,     "No applications awaiting review.", "pending") }}
+  {{ bucket("Changes requested",     buckets.changes_requested,  "Nothing waiting on tenant corrections.") }}
+  {{ bucket("Approved (sent to SignWell)", buckets.approved,     "No approved applications yet.") }}
+  {{ bucket("Declined",              buckets.declined,           "No declined applications.", "muted-section") }}
+</main>
+</body>
+</html>

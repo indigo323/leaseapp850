@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lease Intake &mdash; {{ property_address }}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <h1>Lease Intake</h1>
+
+  {% if fix_note %}
+  <div class="notice notice-warn">
+    <strong>Correction requested:</strong>
+    <p>{{ fix_note }}</p>
+    <p class="hint">Your previous answers are pre-filled below. Fix the
+       item above and resubmit.</p>
+  </div>
+  {% endif %}
+
+  <p class="lede">
+    {% if submission_id %}
+    Update your lease application for <b>{{ property_address }}</b>.
+    {% else %}
+    You&rsquo;re about to start the lease process for
+    <b>{{ property_address }}</b>. Fill in your information below. When
+    you submit, your application is sent to the landlord for review.
+    Once approved, you&rsquo;ll receive a separate email to e-sign the
+    lease. <b>Nothing is binding until all parties sign.</b>
+    {% endif %}
+  </p>
+
+  <form method="post"
+        action="{% if submission_id %}/resubmit/{{ submission_id }}?t={{ token }}{% else %}/submit{% endif %}"
+        id="lease-form">
+
+    <fieldset class="terms-summary">
+      <legend>Lease terms (set by landlord)</legend>
+      <p class="hint">These values are set by the landlord and cannot be
+         changed here. Contact the landlord if anything below is
+         different from what you discussed.</p>
+      <div class="grid2">
+        <div class="readonly-field">
+          <span class="readonly-label">Monthly rent</span>
+          <span class="readonly-value">{{ default_rent }}</span>
+        </div>
+        <div class="readonly-field">
+          <span class="readonly-label">Security deposit</span>
+          <span class="readonly-value">{{ default_security_deposit }}</span>
+        </div>
+        {% if pet_policy == "allowed" %}
+        <div class="readonly-field">
+          <span class="readonly-label">Pet deposit (per approved arrangement)</span>
+          <span class="readonly-value">{{ default_pet_deposit }}</span>
+        </div>
+        {% else %}
+        <div class="readonly-field">
+          <span class="readonly-label">Pets</span>
+          <span class="readonly-value">Not allowed</span>
+        </div>
+        {% endif %}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Your lease dates</legend>
+      <div class="grid2">
+        <label>Move-in date
+          <input type="date" name="start_date" required
+                 value="{{ existing.start_date or '' }}">
+        </label>
+        <label>Lease end date
+          <input type="date" name="end_date" required
+                 value="{{ existing.end_date or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Primary lessee (you)</legend>
+      <div class="grid2">
+        <label>Full legal name
+          <input type="text" name="primary_lessee_name" required
+                 value="{{ existing.primary_lessee_name or '' }}">
+        </label>
+        <label>Email (for e-signature)
+          <input type="email" name="primary_lessee_email" required
+                 value="{{ existing.primary_lessee_email or '' }}">
+        </label>
+        <label>Phone
+          <input type="tel" name="primary_lessee_phone"
+                 placeholder="(510) 555-0123" required
+                 value="{{ existing.primary_lessee_phone or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Second lessee?</legend>
+      <p class="hint">Only add someone here if they will sign the lease and
+         be jointly responsible for rent. Other adult residents go in the
+         next section.</p>
+      {% set existing_num_lessees = existing.num_lessees or "1" %}
+      <label class="inline">
+        <input type="radio" name="num_lessees" value="1"
+               {% if existing_num_lessees != "2" %}checked{% endif %}
+               onclick="document.getElementById('sec').style.display='none'">
+        Just me
+      </label>
+      <label class="inline">
+        <input type="radio" name="num_lessees" value="2"
+               {% if existing_num_lessees == "2" %}checked{% endif %}
+               onclick="document.getElementById('sec').style.display='block'">
+        Two lessees will sign
+      </label>
+      <div id="sec" style="display: {% if existing_num_lessees == '2' %}block{% else %}none{% endif %}; margin-top:1em;">
+        <div class="grid2">
+          <label>Second lessee full legal name
+            <input type="text" name="secondary_lessee_name"
+                   value="{{ existing.secondary_lessee_name or '' }}">
+          </label>
+          <label>Second lessee email
+            <input type="email" name="secondary_lessee_email"
+                   value="{{ existing.secondary_lessee_email or '' }}">
+          </label>
+          <label>Second lessee phone
+            <input type="tel" name="secondary_lessee_phone"
+                   value="{{ existing.secondary_lessee_phone or '' }}">
+          </label>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>All residents</legend>
+      <p class="hint">List everyone who will live at the unit, including
+         the lessee(s). Birthdate is required by the lease for each
+         resident. Up to 5 total.</p>
+      {% for i in range(1, 6) %}
+      <div class="grid2">
+        <label>Resident {{ i }} full name{% if i == 1 %} *{% endif %}
+          <input type="text" name="resident_name_{{ i }}"
+                 {% if i == 1 %}required{% endif %}
+                 value="{{ existing['resident_name_' ~ i] or '' }}">
+        </label>
+        <label>Resident {{ i }} birthdate{% if i == 1 %} *{% endif %}
+          <input type="date" name="resident_dob_{{ i }}"
+                 {% if i == 1 %}required{% endif %}
+                 value="{{ existing['resident_dob_' ~ i] or '' }}">
+        </label>
+      </div>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset>
+      <legend>Emergency contact</legend>
+      <p class="hint">Someone the landlord can reach if there&rsquo;s a
+         building emergency and you&rsquo;re unreachable. Not stored in
+         the lease itself.</p>
+      <div class="grid2">
+        <label>Emergency contact name
+          <input type="text" name="emergency_contact_name" required
+                 value="{{ existing.emergency_contact_name or '' }}">
+        </label>
+        <label>Emergency contact phone
+          <input type="tel" name="emergency_contact_phone" required
+                 value="{{ existing.emergency_contact_phone or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    {% if pet_policy == "allowed" %}
+    <fieldset>
+      <legend>Pets</legend>
+      <p class="hint">If you want to bring a pet, it must be pre-approved
+         by the landlord before signing.</p>
+      {% set existing_has_pets = existing.has_pets or "no" %}
+      <label class="inline">
+        <input type="radio" name="has_pets" value="no"
+               {% if existing_has_pets != "yes" %}checked{% endif %}
+               onclick="document.getElementById('pets').style.display='none'">
+        No pets
+      </label>
+      <label class="inline">
+        <input type="radio" name="has_pets" value="yes"
+               {% if existing_has_pets == "yes" %}checked{% endif %}
+               onclick="document.getElementById('pets').style.display='block'">
+        Yes, pre-approved pet(s)
+      </label>
+      <div id="pets" style="display: {% if existing_has_pets == 'yes' %}block{% else %}none{% endif %}; margin-top:1em;">
+        <label>Number of pets
+          <input type="number" name="num_pets" min="1" max="5"
+                 value="{{ existing.num_pets or '' }}">
+        </label>
+        <label>Describe each pet (species, breed, size, age, name)
+          <textarea name="pet_description" rows="3">{{ existing.pet_description or '' }}</textarea>
+        </label>
+      </div>
+    </fieldset>
+    {% else %}
+    <input type="hidden" name="has_pets" value="no">
+    {% endif %}
+
+    <fieldset>
+      <legend>Renters insurance</legend>
+      <p class="hint">The lease requires you to carry renters insurance.</p>
+      <label>Do you carry or plan to carry renters insurance?
+        <select name="renters_insurance" required>
+          {% set ri = existing.renters_insurance or "" %}
+          <option value="Yes" {% if ri == "Yes" %}selected{% endif %}>Yes, I already have a policy</option>
+          <option value="Planning to" {% if ri == "Planning to" %}selected{% endif %}>Planning to obtain one before move-in</option>
+          <option value="No" {% if ri == "No" %}selected{% endif %}>No</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <button type="submit">
+      {% if submission_id %}Resubmit application{% else %}Submit application{% endif %}
+    </button>
+
+    <p class="hint" style="margin-top:1em;">
+      {% if submission_id %}
+      Your updated application will be re-reviewed. You&rsquo;ll hear back
+      within 48 hours.
+      {% else %}
+      After submission, the landlord will review your application
+      (typically within 48 hours). Once approved, you&rsquo;ll receive a
+      SignWell email to e-sign the lease.
+      {% endif %}
+    </p>
+  </form>
+</main>
+</body>
+</html>

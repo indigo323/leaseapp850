@@ -1,0 +1,48 @@
+# docker-compose.yml
+#
+# Single-service stack: FastAPI lease app only.
+# Nginx Proxy Manager (already running on this host) handles
+# TLS termination and reverse proxy to port 8850.
+#
+# Named "lease850" to distinguish from the existing "lease-app"
+# container running on port 8001.
+
+services:
+  lease850:
+    build: .
+    container_name: lease850
+    restart: unless-stopped
+    ports:
+      - "8850:8000"
+    environment:
+      - SIGNWELL_API_KEY=${SIGNWELL_API_KEY}
+      - SIGNWELL_TEST_MODE=${SIGNWELL_TEST_MODE:-true}
+      - LANDLORD1_NAME=${LANDLORD1_NAME}
+      - LANDLORD1_EMAIL=${LANDLORD1_EMAIL}
+      - LANDLORD2_NAME=${LANDLORD2_NAME}
+      - LANDLORD2_EMAIL=${LANDLORD2_EMAIL}
+      - PROPERTY_ADDRESS=${PROPERTY_ADDRESS:-850 Cedar Street, Berkeley, CA 94710}
+      - LANDLORD_PAYMENT_ADDRESS=${LANDLORD_PAYMENT_ADDRESS}
+      - DEFAULT_RENT=${DEFAULT_RENT}
+      - DEFAULT_SECURITY_DEPOSIT=${DEFAULT_SECURITY_DEPOSIT}
+      - DEFAULT_PET_DEPOSIT=${DEFAULT_PET_DEPOSIT}
+      - PET_POLICY=${PET_POLICY:-none}
+      - ADMIN_NOTIFY_EMAIL=${ADMIN_NOTIFY_EMAIL:-}
+      - LANDLORD_REPLY_EMAIL=${LANDLORD_REPLY_EMAIL:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://lease850.heaveto.net}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET}
+      - ADMIN_TOKEN_SECRET=${ADMIN_TOKEN_SECRET}
+      - PREVIEW_TOKEN=${PREVIEW_TOKEN}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-true}
+      - SMTP_FROM=${SMTP_FROM:-Lease App <lease@heaveto.net>}
+      - SUBMISSIONS_DIR=/data/submissions
+    volumes:
+      - lease-data:/data
+
+volumes:
+  lease-data:
