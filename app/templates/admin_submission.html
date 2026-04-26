@@ -8,12 +8,6 @@
 </head>
 <body>
 <main class="wide">
-  {% if request.query_params.get("error") %}
-  <div class="card" style="background:#fff0f0;border-left:4px solid #8b0000;margin-bottom:1rem">
-    <strong style="color:#8b0000">SignWell error:</strong>
-    {{ request.query_params.get("error") }}
-  </div>
-  {% endif %}
   <nav class="admin-nav">
     <div>
       <a href="/admin/" class="muted">&larr; All submissions</a>
@@ -81,11 +75,36 @@
   <section class="card">
     <h2>Generated lease</h2>
     <p>
-      <a href="/admin/submission/{{ record.id }}/lease.pdf"
+      <a href="/admin/submission/{{ record.id }}/lease.pdf?v={{ record.updated_at | replace(':', '') | replace('-', '') | replace('+', '') }}"
          target="_blank" rel="noopener">
         Open generated PDF &rarr;
       </a>
       <span class="muted small">Opens in a new tab. Review before approving.</span>
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Admin tools</h2>
+    <div style="display:flex; gap:1em; flex-wrap:wrap; align-items:center;">
+      <a href="/admin/submission/{{ record.id }}/edit"
+         class="btn-secondary" style="text-decoration:none; padding:0.6em 1.1em;">
+        ✏&nbsp; Edit submission
+      </a>
+      <form method="post" action="/admin/submission/{{ record.id }}/delete"
+            style="margin:0;"
+            onsubmit="return confirm('{% if record.status == 'approved' %}⚠ This submission has been sent to SignWell. Deleting the local record will NOT cancel the SignWell document — cancel it there first.\n\n{% endif %}Permanently delete this submission? This cannot be undone.');">
+        <button type="submit" class="btn-danger">
+          🗑&nbsp; Delete permanently
+        </button>
+      </form>
+    </div>
+    <p class="hint" style="margin-top:0.6em;">
+      Edit updates stored data with no emails sent. Delete removes the local
+      record only — no SignWell interaction.
+      {% if record.status == "approved" %}
+      <strong>This submission is approved — cancel the SignWell document
+      manually before deleting if signing has not yet completed.</strong>
+      {% endif %}
     </p>
   </section>
 

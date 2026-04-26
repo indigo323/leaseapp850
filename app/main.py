@@ -564,7 +564,11 @@ async def admin_submission_pdf(sid: str):
     # Return the full signing bundle (lease + brochure) — this is exactly
     # what will be sent to SignWell on approval.
     pdf = _render_signing_bundle(ctx)
-    return Response(content=pdf, media_type="application/pdf")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 @app.post("/admin/submission/{sid}/approve",
@@ -680,6 +684,83 @@ async def admin_decline(sid: str, reason: str = Form("")):
     storage.update_status(sid, status="declined",
                           event="declined", note=reason or None)
     return RedirectResponse(url=f"/admin/submission/{sid}", status_code=303)
+
+
+@app.get("/admin/submission/{sid}/edit", response_class=HTMLResponse,
+         dependencies=[Depends(require_admin)])
+async def admin_edit_form(request: Request, sid: str):
+    """Load the intake form pre-filled with the submission's current data,
+    in admin-edit mode (no read-only commercial terms, status choice shown)."""
+    record = storage.load(sid)
+    if record is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(request, "admin_edit.html", {
+        "record": record,
+        "existing": record["form_data"],
+        "property_address": PROPERTY_ADDRESS,
+        "default_rent": _money(DEFAULT_RENT),
+        "default_security_deposit": _money(DEFAULT_SECURITY_DEPOSIT),
+        "default_pet_deposit": _money(DEFAULT_PET_DEPOSIT),
+        "pet_policy": PET_POLICY,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/admin/submission/{sid}/edit",
+          dependencies=[Depends(require_admin)])
+async def admin_edit_save(request: Request, sid: str):
+    """Save admin edits to a submission. Optionally changes status."""
+    record = storage.load(sid)
+    if record is None:
+        raise HTTPException(status_code=404)
+
+    form = dict(await request.form())
+    new_status = form.pop("_new_status", "").strip() or record["status"]
+
+    # Validate status value
+    valid_statuses = {"pending_review", "changes_requested", "approved", "declined"}
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid status: {new_status}")
+
+    # Minimal required field check
+    missing = _validate(form)
+    if missing:
+        raise HTTPException(status_code=400,
+                            detail=f"Missing required fields: {', '.join(missing)}")
+
+    # Always keep resident_name_1/2 in sync with lessee names.
+    # The JS in admin_edit.html does this live while typing; this is the
+    # server-side fallback so the save always wins regardless of JS state.
+    form["resident_name_1"] = form.get("primary_lessee_name", "")
+    new_secondary = form.get("secondary_lessee_name", "").strip()
+    if new_secondary:
+        form["resident_name_2"] = new_secondary
+
+    note = f"Admin edited submission (status: {record['status']} → {new_status})"
+    storage.update_status(
+        sid,
+        status=new_status,
+        event="admin_edited",
+        note=note,
+        form_data=form,
+    )
+    log.info("Admin edited submission %s — status %s → %s",
+             sid, record["status"], new_status)
+
+    return RedirectResponse(url=f"/admin/submission/{sid}", status_code=303)
+
+
+@app.post("/admin/submission/{sid}/delete",
+          dependencies=[Depends(require_admin)])
+async def admin_delete(sid: str):
+    """Permanently delete a submission. No emails sent, no SignWell
+    interaction. If SignWell already received this document, cancel it
+    there manually before deleting here."""
+    deleted = storage.delete(sid)
+    if not deleted:
+        raise HTTPException(status_code=404)
+    log.info("Admin permanently deleted submission %s", sid)
+    return RedirectResponse(url="/admin/", status_code=303)
 
 
 # ---------------------------------------------------------------------------

@@ -12,11 +12,13 @@ for 850 Cedar St, Berkeley. Deployed at `https://lease850.heaveto.net`.
 | Container | `lease850`, host port 8850 |
 | Source | `/home/fezzik/leaseapp850/` |
 | GitHub | `git@github.com:indigo323/leaseapp850.git` (main) |
+| Portainer stack | `lease850` (ID 66) on `fezzik` env — `192.168.52.25:9000` → Stacks → lease850 |
 | Admin | `https://lease850.heaveto.net/admin` |
-| PDF preview | `/preview?token=` — token in `.env` |
+| PDF preview | `/preview?token=` — token in Portainer stack env |
 
-Rebuild and restart: `docker compose up -d --build`  
-Restart only (env change): `docker compose restart`  
+Rebuild image: `docker build -t lease850:latest /home/fezzik/leaseapp850/`  
+Then redeploy: Portainer → Stacks → lease850 → Redeploy  
+Env changes: Portainer → Stacks → lease850 → Editor → update env vars → Redeploy  
 Logs: `docker logs -f lease850`
 
 ## Infrastructure
@@ -39,6 +41,6 @@ SignWell recipients: Primary Lessee + optional Secondary Lessee + Landlord 1 (Br
 
 ## Pending items
 
-1. **Resend SMTP** — `SMTP_HOST` is blank (log-only). Wire up smtp.resend.com when API key available.
+1. **Resend domain verification** — `heaveto.net` must be verified in Resend dashboard before outbound email works.
 2. **SignWell email verification** — account email must be verified at app.signwell.com before approvals work.
 3. **Go live** — flip `SIGNWELL_TEST_MODE=false` after smoke test passes.

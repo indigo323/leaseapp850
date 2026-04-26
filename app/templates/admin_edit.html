@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit submission — {{ record.form_data.primary_lessee_name }}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="wide">
+  <nav class="admin-nav">
+    <div>
+      <a href="/admin/submission/{{ record.id }}" class="muted">&larr; Back to submission</a>
+      <h1>Edit: {{ record.form_data.primary_lessee_name }}</h1>
+    </div>
+    <div>
+      <span class="status-pill status-{{ record.status }}">
+        {{ record.status|replace("_", " ") }}
+      </span>
+      &middot;
+      <a href="/admin/logout">Log out</a>
+    </div>
+  </nav>
+
+  <div class="notice notice-warn">
+    <strong>Admin edit.</strong> Changes are saved immediately with a history entry.
+    No emails are sent. The next time you open the generated PDF, it will reflect
+    the updated data.
+    {% if record.status == "approved" %}
+    <p><strong>⚠ This submission is already approved and a SignWell document
+    may exist.</strong> If you edit substantive fields (tenant name, dates,
+    rent amounts), consider whether the in-flight SignWell document needs to
+    be cancelled and re-sent.</p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/admin/submission/{{ record.id }}/edit">
+
+    <fieldset>
+      <legend>Status after save</legend>
+      <p class="hint">Choose what status the submission should have after you
+         save. Select "keep current" to leave it unchanged.</p>
+      <div class="status-choice">
+        <label class="inline">
+          <input type="radio" name="_new_status" value="{{ record.status }}" checked>
+          Keep current ({{ record.status|replace("_", " ") }})
+        </label>
+        {% if record.status != "pending_review" %}
+        <label class="inline">
+          <input type="radio" name="_new_status" value="pending_review">
+          Reset to pending review
+        </label>
+        {% endif %}
+        {% if record.status != "changes_requested" %}
+        <label class="inline">
+          <input type="radio" name="_new_status" value="changes_requested">
+          Mark as changes requested
+        </label>
+        {% endif %}
+        {% if record.status != "approved" %}
+        <label class="inline">
+          <input type="radio" name="_new_status" value="approved">
+          Mark as approved
+        </label>
+        {% endif %}
+        {% if record.status != "declined" %}
+        <label class="inline">
+          <input type="radio" name="_new_status" value="declined">
+          Mark as declined
+        </label>
+        {% endif %}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Commercial terms (env-driven — shown for reference)</legend>
+      <p class="hint">These come from Portainer env vars and cannot be changed
+         here. Edit them in Portainer and restart the stack.</p>
+      <div class="grid2">
+        <div class="readonly-field">
+          <span class="readonly-label">Monthly rent</span>
+          <span class="readonly-value">{{ default_rent }}</span>
+        </div>
+        <div class="readonly-field">
+          <span class="readonly-label">Security deposit</span>
+          <span class="readonly-value">{{ default_security_deposit }}</span>
+        </div>
+        {% if pet_policy == "allowed" %}
+        <div class="readonly-field">
+          <span class="readonly-label">Pet deposit</span>
+          <span class="readonly-value">{{ default_pet_deposit }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Lease dates</legend>
+      <div class="grid2">
+        <label>Move-in date
+          <input type="date" name="start_date" required
+                 value="{{ existing.start_date or '' }}">
+        </label>
+        <label>Lease end date
+          <input type="date" name="end_date" required
+                 value="{{ existing.end_date or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Primary lessee</legend>
+      <div class="grid2">
+        <label>Full legal name
+          <input type="text" id="lessee-name-1" name="primary_lessee_name" required
+                 value="{{ existing.primary_lessee_name or '' }}">
+        </label>
+        <label>Email (for e-signature)
+          <input type="email" name="primary_lessee_email" required
+                 value="{{ existing.primary_lessee_email or '' }}">
+        </label>
+        <label>Phone
+          <input type="tel" name="primary_lessee_phone" required
+                 value="{{ existing.primary_lessee_phone or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Second lessee</legend>
+      {% set existing_num_lessees = existing.num_lessees or "1" %}
+      <label class="inline">
+        <input type="radio" name="num_lessees" value="1"
+               {% if existing_num_lessees != "2" %}checked{% endif %}
+               onclick="document.getElementById('sec').style.display='none'">
+        Just primary lessee
+      </label>
+      <label class="inline">
+        <input type="radio" name="num_lessees" value="2"
+               {% if existing_num_lessees == "2" %}checked{% endif %}
+               onclick="document.getElementById('sec').style.display='block'">
+        Two lessees
+      </label>
+      <div id="sec" style="display: {% if existing_num_lessees == '2' %}block{% else %}none{% endif %}; margin-top:1em;">
+        <div class="grid2">
+          <label>Second lessee full legal name
+            <input type="text" id="lessee-name-2" name="secondary_lessee_name"
+                   value="{{ existing.secondary_lessee_name or '' }}">
+          </label>
+          <label>Second lessee email
+            <input type="email" name="secondary_lessee_email"
+                   value="{{ existing.secondary_lessee_email or '' }}">
+          </label>
+          <label>Second lessee phone
+            <input type="tel" name="secondary_lessee_phone"
+                   value="{{ existing.secondary_lessee_phone or '' }}">
+          </label>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>All residents</legend>
+      <p class="hint">Up to 5 total. Resident 1 is required.</p>
+      {% for i in range(1, 6) %}
+      <div class="grid2">
+        <label>Resident {{ i }} name{% if i == 1 %} *{% endif %}
+          {% if i == 1 %}
+          <a href="#" style="font-size:0.8em;font-weight:normal;margin-left:0.5em;"
+             onclick="document.getElementById('res-name-1').value=document.getElementById('lessee-name-1').value;return false;">
+            ← copy primary lessee</a>
+          {% elif i == 2 %}
+          <a href="#" style="font-size:0.8em;font-weight:normal;margin-left:0.5em;"
+             onclick="document.getElementById('res-name-2').value=document.getElementById('lessee-name-2').value;return false;">
+            ← copy second lessee</a>
+          {% endif %}
+          <input type="text" name="resident_name_{{ i }}"
+                 {% if i <= 2 %}id="res-name-{{ i }}"{% endif %}
+                 {% if i == 1 %}required{% endif %}
+                 value="{{ existing['resident_name_' ~ i] or '' }}">
+        </label>
+        <label>Resident {{ i }} birthdate{% if i == 1 %} *{% endif %}
+          <input type="date" name="resident_dob_{{ i }}"
+                 {% if i == 1 %}required{% endif %}
+                 value="{{ existing['resident_dob_' ~ i] or '' }}">
+        </label>
+      </div>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset>
+      <legend>Emergency contact</legend>
+      <div class="grid2">
+        <label>Name
+          <input type="text" name="emergency_contact_name" required
+                 value="{{ existing.emergency_contact_name or '' }}">
+        </label>
+        <label>Phone
+          <input type="tel" name="emergency_contact_phone" required
+                 value="{{ existing.emergency_contact_phone or '' }}">
+        </label>
+      </div>
+    </fieldset>
+
+    {% if pet_policy == "allowed" %}
+    <fieldset>
+      <legend>Pets</legend>
+      {% set existing_has_pets = existing.has_pets or "no" %}
+      <label class="inline">
+        <input type="radio" name="has_pets" value="no"
+               {% if existing_has_pets != "yes" %}checked{% endif %}
+               onclick="document.getElementById('pets').style.display='none'">
+        No pets
+      </label>
+      <label class="inline">
+        <input type="radio" name="has_pets" value="yes"
+               {% if existing_has_pets == "yes" %}checked{% endif %}
+               onclick="document.getElementById('pets').style.display='block'">
+        Yes, pre-approved pet(s)
+      </label>
+      <div id="pets" style="display: {% if existing_has_pets == 'yes' %}block{% else %}none{% endif %}; margin-top:1em;">
+        <label>Number of pets
+          <input type="number" name="num_pets" min="1" max="5"
+                 value="{{ existing.num_pets or '' }}">
+        </label>
+        <label>Describe each pet
+          <textarea name="pet_description" rows="3">{{ existing.pet_description or '' }}</textarea>
+        </label>
+      </div>
+    </fieldset>
+    {% else %}
+    <input type="hidden" name="has_pets" value="no">
+    {% endif %}
+
+    <fieldset>
+      <legend>Renters insurance</legend>
+      <label>Status
+        <select name="renters_insurance" required>
+          {% set ri = existing.renters_insurance or "" %}
+          <option value="Yes"          {% if ri == "Yes" %}selected{% endif %}>Yes, I already have a policy</option>
+          <option value="Planning to"  {% if ri == "Planning to" %}selected{% endif %}>Planning to obtain before move-in</option>
+          <option value="No"           {% if ri == "No" %}selected{% endif %}>No</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <div class="edit-actions">
+      <button type="submit" class="btn-primary">Save changes</button>
+      <a href="/admin/submission/{{ record.id }}" class="btn-secondary"
+         style="text-decoration:none; padding: 0.6em 1.1em; display:inline-block;">
+        Cancel
+      </a>
+    </div>
+  </form>
+</main>
+</body>
+</html>

@@ -136,6 +136,16 @@ def update_status(
     return record
 
 
+def delete(submission_id: str) -> bool:
+    """Permanently delete a submission JSON file. Returns True if deleted,
+    False if it didn't exist."""
+    p = _path(submission_id)
+    if not p.exists():
+        return False
+    p.unlink()
+    return True
+
+
 def list_all(status_filter: str | None = None) -> list[dict[str, Any]]:
     """List submissions, newest first. Optionally filter by status."""
     ensure_dir()
