@@ -112,7 +112,7 @@
       <legend>Primary lessee</legend>
       <div class="grid2">
         <label>Full legal name
-          <input type="text" id="lessee-name-1" name="primary_lessee_name" required
+          <input type="text" name="primary_lessee_name" required
                  value="{{ existing.primary_lessee_name or '' }}">
         </label>
         <label>Email (for e-signature)
@@ -144,7 +144,7 @@
       <div id="sec" style="display: {% if existing_num_lessees == '2' %}block{% else %}none{% endif %}; margin-top:1em;">
         <div class="grid2">
           <label>Second lessee full legal name
-            <input type="text" id="lessee-name-2" name="secondary_lessee_name"
+            <input type="text" name="secondary_lessee_name"
                    value="{{ existing.secondary_lessee_name or '' }}">
           </label>
           <label>Second lessee email
@@ -170,17 +170,7 @@
       {% for i in range(1, 6) %}
       <div class="grid2">
         <label>Resident {{ i }} name{% if i == 1 %} *{% endif %}
-          {% if i == 1 %}
-          <a href="#" style="font-size:0.8em;font-weight:normal;margin-left:0.5em;"
-             onclick="document.getElementById('res-name-1').value=document.getElementById('lessee-name-1').value;return false;">
-            ← copy primary lessee</a>
-          {% elif i == 2 %}
-          <a href="#" style="font-size:0.8em;font-weight:normal;margin-left:0.5em;"
-             onclick="document.getElementById('res-name-2').value=document.getElementById('lessee-name-2').value;return false;">
-            ← copy second lessee</a>
-          {% endif %}
           <input type="text" name="resident_name_{{ i }}"
-                 {% if i <= 2 %}id="res-name-{{ i }}"{% endif %}
                  {% if i == 1 %}required{% endif %}
                  value="{{ existing['resident_name_' ~ i] or '' }}">
         </label>
