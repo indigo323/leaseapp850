@@ -137,6 +137,11 @@
       <p class="hint">List everyone who will live at the unit, including
          the lessee(s). Birthdate is required by the lease for each
          resident. Up to 5 total.</p>
+      <p class="hint">
+        <a href="#" id="copy-lessees" onclick="copyLesseesToResidents(event)">
+          Copy lessee name(s) to resident 1{% if not submission_id %} / 2{% endif %}
+        </a>
+      </p>
       {% for i in range(1, 6) %}
       <div class="grid2">
         <label>Resident {{ i }} full name{% if i == 1 %} *{% endif %}
@@ -231,5 +236,29 @@
     </p>
   </form>
 </main>
+<script>
+function copyLesseesToResidents(e) {
+  e.preventDefault();
+  var primary = document.querySelector('[name="primary_lessee_name"]');
+  var r1 = document.querySelector('[name="resident_name_1"]');
+  if (primary && r1 && primary.value.trim()) {
+    r1.value = primary.value.trim();
+  }
+  // Only copy secondary if the two-lessee radio is selected
+  var twoLessees = document.querySelector('[name="num_lessees"][value="2"]');
+  if (twoLessees && twoLessees.checked) {
+    var secondary = document.querySelector('[name="secondary_lessee_name"]');
+    var r2 = document.querySelector('[name="resident_name_2"]');
+    if (secondary && r2 && secondary.value.trim()) {
+      r2.value = secondary.value.trim();
+    }
+  }
+  // Give the user a subtle confirmation
+  var link = document.getElementById('copy-lessees');
+  var orig = link.textContent;
+  link.textContent = 'Copied ✓';
+  setTimeout(function() { link.textContent = orig; }, 1800);
+}
+</script>
 </body>
 </html>

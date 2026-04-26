@@ -162,6 +162,11 @@
     <fieldset>
       <legend>All residents</legend>
       <p class="hint">Up to 5 total. Resident 1 is required.</p>
+      <p class="hint">
+        <a href="#" id="copy-lessees" onclick="copyLesseesToResidents(event)">
+          Copy lessee name(s) to resident 1 / 2
+        </a>
+      </p>
       {% for i in range(1, 6) %}
       <div class="grid2">
         <label>Resident {{ i }} name{% if i == 1 %} *{% endif %}
@@ -253,5 +258,27 @@
     </div>
   </form>
 </main>
+<script>
+function copyLesseesToResidents(e) {
+  e.preventDefault();
+  var primary = document.querySelector('[name="primary_lessee_name"]');
+  var r1 = document.querySelector('[name="resident_name_1"]');
+  if (primary && r1 && primary.value.trim()) {
+    r1.value = primary.value.trim();
+  }
+  var twoLessees = document.querySelector('[name="num_lessees"][value="2"]');
+  if (twoLessees && twoLessees.checked) {
+    var secondary = document.querySelector('[name="secondary_lessee_name"]');
+    var r2 = document.querySelector('[name="resident_name_2"]');
+    if (secondary && r2 && secondary.value.trim()) {
+      r2.value = secondary.value.trim();
+    }
+  }
+  var link = document.getElementById('copy-lessees');
+  var orig = link.textContent;
+  link.textContent = 'Copied ✓';
+  setTimeout(function() { link.textContent = orig; }, 1800);
+}
+</script>
 </body>
 </html>
