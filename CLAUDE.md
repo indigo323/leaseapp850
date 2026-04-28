@@ -39,8 +39,6 @@ Logs: `docker logs -f lease850`
 Free plan = max 3 recipients. Decision: Landlord 2 (Paige) signs on paper.
 SignWell recipients: Primary Lessee + optional Secondary Lessee + Landlord 1 (Brent).
 
-## Pending items
+## Status
 
-1. **Resend domain verification** — `heaveto.net` must be verified in Resend dashboard before outbound email works.
-2. **SignWell email verification** — account email must be verified at app.signwell.com before approvals work.
-3. **Go live** — flip `SIGNWELL_TEST_MODE=false` after smoke test passes.
+Live as of 2026-04-27. `SIGNWELL_TEST_MODE=false`. Resend domain verified, SignWell account verified.
